@@ -266,22 +266,17 @@ Responsável: ${data.responsavel || "—"}`;
     }
     setImproving(true);
     try {
-      const prompt = `Você é um assistente de escrita para relatórios operacionais ferroviários.
-Reescreva os campos abaixo de forma mais clara, profissional e coerente, sem alterar o sentido.
-Responda APENAS com JSON no formato: {"ocorrencia":"...","encaminhamento":"...","situacaoFinal":"..."}
-
-Ocorrência: ${form.ocorrencia}
-Encaminhamento: ${form.encaminhamento}
-Situação final: ${form.situacaoFinal}`;
-
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("/api/melhorar", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
+        body: JSON.stringify({
+          ocorrencia:     form.ocorrencia,
+          encaminhamento: form.encaminhamento,
+          situacaoFinal:  form.situacaoFinal,
+        }),
       });
-      const data = await res.json();
-      const raw = data.content?.find(b => b.type === "text")?.text || "";
-      const parsed = JSON.parse(raw.replace(/```json|```/g, "").trim());
+      const parsed = await res.json();
+      if (parsed.error) throw new Error(parsed.error);
       setForm(p => ({
         ...p,
         ocorrencia:     parsed.ocorrencia     || p.ocorrencia,
@@ -289,7 +284,9 @@ Situação final: ${form.situacaoFinal}`;
         situacaoFinal:  parsed.situacaoFinal  || p.situacaoFinal,
       }));
       showToast("✓ Escrita melhorada!");
-    } catch { showToast("Erro ao melhorar escrita. Tente novamente."); }
+    } catch (e) {
+      showToast("Erro ao melhorar escrita. Tente novamente.");
+    }
     setImproving(false);
   };
 
@@ -409,17 +406,6 @@ Situação final: ${form.situacaoFinal}`;
             <label style={labelStyle}>Responsável</label>
             <input value={form.responsavel} onChange={e => setField("responsavel", e.target.value)} placeholder="Seu nome" style={inputStyle}/>
           </div>
-
-          <button onClick={handleMelhorar} disabled={improving} style={{
-            background: improving ? C.card : "rgba(26,111,212,0.15)",
-            border: `1px solid ${improving ? C.border : C.blue}`,
-            borderRadius: 9, padding: "13px",
-            color: improving ? C.muted : C.blue,
-            fontSize: 14, fontWeight: 800, cursor: improving ? "not-allowed" : "pointer",
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          }}>
-            {improving ? <><span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span> Melhorando...</> : "✨ Melhorar escrita (IA)"}
-          </button>
 
           <div style={{ display: "flex", gap: 10 }}>
             <button onClick={handleSalvar} style={btnStyle("rgba(34,197,94,0.12)", "rgba(34,197,94,0.4)", C.green)}>💾 Salvar</button>
