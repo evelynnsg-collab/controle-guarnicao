@@ -14,11 +14,6 @@ const FIREBASE_CONFIG = {
 // ─── Número do grupo WhatsApp (somente dígitos, com DDI) ─────────────────────
 const WHATSAPP_GROUP = "5511999999999"; // ← substitua pelo número do grupo
 
-// ─── Agora.io App ID (rádio PTT) ─────────────────────────────────────────────
-// Crie uma conta grátis em https://console.agora.io e cole o App ID abaixo
-const AGORA_APP_ID = "e4d415ef5c174f9394c9809ecbeff5cf";
-const AGORA_CHANNEL = "guarnicao-radio";
-
 // ─── PLATAFORMAS ──────────────────────────────────────────────────────────────
 const PLATFORMS = [
   { id: "2/3", label: "Plataforma 2/3", short: "2/3", color: "#1A6FD4" },
@@ -489,13 +484,7 @@ function SectionLabel({ children }) {
   );
 }
 
-// ─── ABA RÁDIO PTT ───────────────────────────────────────────────────────────
-function RadioTab({ userName }) {
-  const [status,     setStatus]     = useState("idle");   // idle | connecting | ready | talking | listening
-  const [speaking,   setSpeaking]   = useState(null);     // nome de quem está falando
-  const [log,        setLog]        = useState([]);
-  const [agoraReady, setAgoraReady] = useState(false);
-  const [error,      setError]      = useState("");
+function RegisterScreen({ onRegister, loading }) {
 
   const clientRef   = useRef(null);
   const localTrack  = useRef(null);
@@ -992,7 +981,6 @@ function Dashboard({ user, roster, onToggle, onChangePlatform, onLogout, connect
         {[
           { key: "guarnicao",  label: "🚉 Guarnição"  },
           { key: "ocorrencia", label: "📋 Ocorrência" },
-          { key: "radio",      label: "📻 Rádio"      },
         ].map(tab => (
           <button
             key={tab.key}
@@ -1081,10 +1069,6 @@ function Dashboard({ user, roster, onToggle, onChangePlatform, onLogout, connect
 
       {activeTab === "ocorrencia" && (
         <OcorrenciaTab userName={me.name} />
-      )}
-
-      {activeTab === "radio" && (
-        <RadioTab userName={me.name} />
       )}
 
       <style>{`
