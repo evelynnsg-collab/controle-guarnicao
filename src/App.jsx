@@ -496,6 +496,7 @@ function AdminTab() {
   const [importando, setImportando] = useState(false);
   const [previewImagem, setPreviewImagem] = useState(null);
   const fileInputRef = useRef(null);
+  const excelInputRef = useRef(null);
 
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),3000); };
   const saveColabs = (list) => { setColaboradores(list); localStorage.setItem("gn_colaboradores", JSON.stringify(list)); };
@@ -519,6 +520,74 @@ function AdminTab() {
 
   const remover = (nome) => { saveColabs(colaboradores.filter(c=>c.nome!==nome)); };
 
+  // Importa Excel da escala e lê T/F via SheetJS
+  const handleImportarExcel = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportando(true);
+
+    try {
+      // Carrega SheetJS dinamicamente
+      if (!window.XLSX) {
+        await new Promise((res, rej) => {
+          const s = document.createElement("script");
+          s.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+          s.onload = res; s.onerror = rej;
+          document.head.appendChild(s);
+        });
+      }
+
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = window.XLSX.read(arrayBuffer, { type: "array" });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+
+      // Detecta coluna de nomes e coluna T/F
+      // Espera: primeira coluna = nomes, segunda ou mais = T/F por dia
+      // Ignora linhas de cabeçalho (sem nome ou nome = "Colaborador", etc)
+      const colaboradoresLidos = [];
+      
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.length === 0) continue;
+        
+        const nome = String(row[0] || "").trim();
+        if (!nome || nome.toLowerCase().includes("colaborador") || nome.toLowerCase().includes("nome") || nome.length < 2) continue;
+        
+        // Verifica se há alguma célula T ou F na linha
+        let trabalha = true; // padrão: trabalha
+        let encontrouTF = false;
+        
+        for (let j = 1; j < row.length; j++) {
+          const cell = String(row[j] || "").trim().toUpperCase();
+          if (cell === "T") { trabalha = true; encontrouTF = true; break; }
+          if (cell === "F") { trabalha = false; encontrouTF = true; break; }
+        }
+        
+        // Se não encontrou T/F explícito, verifica se tem algum conteúdo
+        if (!encontrouTF) {
+          const temConteudo = row.slice(1).some(c => String(c||"").trim() !== "");
+          trabalha = temConteudo;
+        }
+        
+        colaboradoresLidos.push({ nome, trabalha });
+      }
+
+      if (colaboradoresLidos.length === 0) {
+        showToast("Nenhum colaborador encontrado. Verifique o formato do Excel.");
+      } else {
+        saveColabs(colaboradoresLidos);
+        const t = colaboradoresLidos.filter(c=>c.trabalha).length;
+        const f = colaboradoresLidos.filter(c=>!c.trabalha).length;
+        showToast(`✓ ${colaboradoresLidos.length} colaboradores importados! ${t} trabalham, ${f} de folga.`);
+      }
+    } catch(err) {
+      showToast("Erro ao ler Excel: " + err.message);
+    }
+    setImportando(false);
+    if (excelInputRef.current) excelInputRef.current.value = "";
+  };
+
   // Importa foto da escala e reconhece T/F via Claude API
   const handleImportarFoto = async (e) => {
     const file = e.target.files?.[0];
@@ -527,7 +596,6 @@ function AdminTab() {
     setPreviewImagem(URL.createObjectURL(file));
 
     try {
-      // Converte imagem para base64
       const base64 = await new Promise((res, rej) => {
         const reader = new FileReader();
         reader.onload = () => res(reader.result.split(",")[1]);
@@ -537,7 +605,6 @@ function AdminTab() {
 
       const mediaType = file.type || "image/jpeg";
 
-      // Chama Claude API para reconhecer T/F na escala
       const resp = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -547,21 +614,14 @@ function AdminTab() {
           messages: [{
             role: "user",
             content: [
-              {
-                type: "image",
-                source: { type: "base64", media_type: mediaType, data: base64 }
-              },
-              {
-                type: "text",
-                text: `Esta é uma escala de trabalho. Analise a tabela e retorne um JSON com o seguinte formato:
+              { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
+              { type: "text", text: `Esta é uma escala de trabalho. Analise a tabela e retorne um JSON:
 {"colaboradores": [{"nome": "Nome", "trabalha": true/false}]}
 
 Regras:
-- Se a célula contém "T" (trabalha) → trabalha: true
-- Se a célula contém "F" (folga) ou está vazia → trabalha: false
-- Use o nome exato que aparece na tabela
-- Retorne APENAS o JSON, sem texto adicional`
-              }
+- T = trabalha: true
+- F ou vazio = trabalha: false
+- Retorne APENAS o JSON` }
             ]
           }]
         })
@@ -573,20 +633,19 @@ Regras:
       const parsed = JSON.parse(clean);
 
       if (parsed.colaboradores && Array.isArray(parsed.colaboradores)) {
-        // Mescla com colaboradores existentes ou cria novos
         const novos = parsed.colaboradores.map(c => ({
           nome: c.nome,
           trabalha: c.trabalha === true || c.trabalha === "true"
         }));
         saveColabs(novos);
-        const trabalhando = novos.filter(c=>c.trabalha).length;
-        const folga = novos.filter(c=>!c.trabalha).length;
-        showToast(`✓ ${novos.length} colaboradores importados! ${trabalhando} trabalham, ${folga} de folga.`);
+        const t = novos.filter(c=>c.trabalha).length;
+        const f = novos.filter(c=>!c.trabalha).length;
+        showToast(`✓ ${novos.length} importados! ${t} trabalham, ${f} de folga.`);
       } else {
         showToast("Não foi possível ler a escala. Tente outra foto.");
       }
     } catch(err) {
-      showToast("Erro ao processar imagem. Verifique a foto e tente novamente.");
+      showToast("Erro ao processar imagem.");
     }
     setImportando(false);
   };
@@ -595,7 +654,6 @@ Regras:
     const e = gerarEscala(colaboradores, postoOffset);
     setEscala(e);
     setView("escala");
-    // Avança offset para próxima geração (revezamento)
     const novoOffset = (postoOffset + 1) % POSTOS_CONFIG.length;
     setPostoOffset(novoOffset);
     localStorage.setItem("gn_posto_offset", String(novoOffset));
@@ -660,22 +718,32 @@ Regras:
 
           {/* Importar foto da escala */}
           <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px", display:"flex", flexDirection:"column", gap:10 }}>
-            <div style={{ color:C.white, fontWeight:700, fontSize:14 }}>📷 Importar escala por foto</div>
+            <div style={{ color:C.white, fontWeight:700, fontSize:14 }}>📂 Importar escala</div>
             <div style={{ color:C.muted, fontSize:12, lineHeight:1.5 }}>
-              Tire uma foto da sua escala mensal. A IA reconhece automaticamente quem está com <strong style={{color:C.green}}>T</strong> (trabalha) ou <strong style={{color:C.red}}>F</strong> (folga).
+              Importe via <strong style={{color:C.green}}>Excel</strong> (.xlsx/.xls) ou <strong style={{color:C.amber}}>foto</strong>. O sistema lê automaticamente <strong style={{color:C.green}}>T</strong> (trabalha) e <strong style={{color:C.red}}>F</strong> (folga).
             </div>
 
             {previewImagem && (
-              <img src={previewImagem} alt="Preview" style={{ width:"100%", borderRadius:8, border:`1px solid ${C.border}`, maxHeight:200, objectFit:"contain" }}/>
+              <img src={previewImagem} alt="Preview" style={{ width:"100%", borderRadius:8, border:`1px solid ${C.border}`, maxHeight:160, objectFit:"contain" }}/>
             )}
 
+            <input ref={excelInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={handleImportarExcel} style={{ display:"none" }}/>
             <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImportarFoto} style={{ display:"none" }}/>
-            <button
-              onClick={()=>fileInputRef.current?.click()}
-              disabled={importando}
-              style={{ background:importando?"rgba(26,111,212,0.1)":"rgba(26,111,212,0.15)", border:`1px solid ${importando?C.border:C.blue}`, borderRadius:8, padding:"13px", color:importando?C.muted:C.blue, fontSize:14, fontWeight:800, cursor:importando?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
-              {importando ? <><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span> Lendo escala...</> : "📷 Selecionar foto da escala"}
-            </button>
+
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
+              <button
+                onClick={()=>excelInputRef.current?.click()}
+                disabled={importando}
+                style={{ background:importando?"rgba(13,155,82,0.05)":"rgba(13,155,82,0.12)", border:`1px solid ${importando?C.border:"rgba(13,155,82,0.5)"}`, borderRadius:8, padding:"13px 8px", color:importando?C.muted:C.green, fontSize:13, fontWeight:800, cursor:importando?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                {importando ? <><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span></> : "📊"} Excel / CSV
+              </button>
+              <button
+                onClick={()=>fileInputRef.current?.click()}
+                disabled={importando}
+                style={{ background:importando?"rgba(26,111,212,0.05)":"rgba(26,111,212,0.12)", border:`1px solid ${importando?C.border:C.blue}`, borderRadius:8, padding:"13px 8px", color:importando?C.muted:C.blue, fontSize:13, fontWeight:800, cursor:importando?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:6 }}>
+                {importando ? <><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span></> : "📷"} Foto
+              </button>
+            </div>
           </div>
 
           {/* Adicionar colaborador manualmente */}
