@@ -109,146 +109,128 @@ function SectionLabel({ children }) {
   );
 }
 
-// ─── ABA RÁDIO PTT (WebRTC peer-to-peer via Firebase signaling) ───────────────
+// ─── ABA RÁDIO PTT (Agora RTC) ───────────────────────────────────────────────
+const AGORA_APP_ID = "e4d415ef5c174f9394c9809ecbeff5cf";
+const AGORA_CHANNEL = "guarnicao-radio";
+
 function RadioTab({ userName }) {
-  const [status, setStatus] = useState("idle");
+  const [status,   setStatus]   = useState("idle");
   const [speaking, setSpeaking] = useState(null);
-  const [log, setLog] = useState([]);
-  const [error, setError] = useState("");
-  const [connected, setConnected] = useState(false);
-  const localStream = useRef(null);
-  const peers = useRef({});
-  const pressing = useRef(false);
-  const myId = useRef(userName.replace(/[^a-zA-Z0-9]/g,"_") + "_" + Date.now());
+  const [log,      setLog]      = useState([]);
+  const [error,    setError]    = useState("");
+  const [sdkReady, setSdkReady] = useState(false);
+  const clientRef    = useRef(null);
+  const localAudio   = useRef(null);
+  const pressing     = useRef(false);
 
   const addLog = (name) => {
     const ts = new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
     setLog(prev => [{name,ts,id:Date.now()},...prev].slice(0,20));
   };
 
-  // Cria peer connection para um usuário remoto
-  const createPeer = (peerId, isInitiator) => {
-    const pc = new RTCPeerConnection({ 
-    iceServers:[
-      {urls:"stun:stun.l.google.com:19302"},
-      {urls:"stun:stun1.l.google.com:19302"},
-      {urls:"stun:stun2.l.google.com:19302"},
-      {urls:"stun:stun3.l.google.com:19302"},
-      {urls:"turn:openrelay.metered.ca:80", username:"openrelayproject", credential:"openrelayproject"},
-      {urls:"turn:openrelay.metered.ca:443", username:"openrelayproject", credential:"openrelayproject"},
-      {urls:"turn:openrelay.metered.ca:443?transport=tcp", username:"openrelayproject", credential:"openrelayproject"},
-    ]
-  });
-    peers.current[peerId] = pc;
-
-    pc.onicecandidate = (e) => {
-      if (e.candidate) {
-        dbRef(`guarnicao/radio_signal/${peerId}/${myId.current}/ice`).push(e.candidate.toJSON());
-      }
-    };
-
-    pc.ontrack = (e) => {
-      const audio = new Audio();
-      audio.srcObject = e.streams[0];
-      audio.play().catch(()=>{});
-    };
-
-    if (localStream.current) {
-      localStream.current.getTracks().forEach(t => pc.addTrack(t, localStream.current));
-    }
-
-    if (isInitiator) {
-      pc.createOffer().then(offer => {
-        pc.setLocalDescription(offer);
-        dbRef(`guarnicao/radio_signal/${myId.current}/${peerId}/offer`).set({sdp:offer.sdp,type:offer.type});
-      });
-    }
-
-    // Escuta oferta
-    dbRef(`guarnicao/radio_signal/${peerId}/${myId.current}/offer`).on("value", snap => {
-      const offer = snap.val();
-      if (offer && pc.signalingState === "stable") {
-        pc.setRemoteDescription(new RTCSessionDescription(offer)).then(() => {
-          pc.createAnswer().then(answer => {
-            pc.setLocalDescription(answer);
-            dbRef(`guarnicao/radio_signal/${myId.current}/${peerId}/answer`).set({sdp:answer.sdp,type:answer.type});
-          });
-        });
-      }
-    });
-
-    // Escuta resposta
-    dbRef(`guarnicao/radio_signal/${peerId}/${myId.current}/answer`).on("value", snap => {
-      const answer = snap.val();
-      if (answer && pc.signalingState === "have-local-offer") {
-        pc.setRemoteDescription(new RTCSessionDescription(answer));
-      }
-    });
-
-    // Escuta ICE candidates
-    dbRef(`guarnicao/radio_signal/${peerId}/${myId.current}/ice`).on("child_added", snap => {
-      const candidate = snap.val();
-      if (candidate) pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(()=>{});
-    });
-
-    return pc;
-  };
-
+  // Carrega SDK Agora
   useEffect(() => {
-    if (!_db) return;
-    const presenceRef = dbRef(`guarnicao/radio_presence/${myId.current}`);
-    presenceRef.set({ name: userName, ts: Date.now() });
-    presenceRef.onDisconnect().remove();
+    const load = (src) => new Promise((res,rej) => {
+      if (document.querySelector(`script[src="${src}"]`)) { res(); return; }
+      const s = document.createElement("script");
+      s.src = src; s.onload = res; s.onerror = rej;
+      document.head.appendChild(s);
+    });
+    load("https://download.agora.io/sdk/release/AgoraRTC_N.js")
+      .then(() => { setSdkReady(true); })
+      .catch(() => setError("Falha ao carregar SDK de áudio."));
+  }, []);
 
-    // Escuta quem entrou no canal
-    const presRef = dbRef("guarnicao/radio_presence");
-    presRef.on("value", snap => {
-      const data = snap.val() || {};
-      setConnected(true);
-      Object.keys(data).forEach(pid => {
-        if (pid !== myId.current && !peers.current[pid]) {
-          createPeer(pid, pid > myId.current);
+  // Entra no canal Agora
+  useEffect(() => {
+    if (!sdkReady) return;
+    let mounted = true;
+
+    const join = async () => {
+      try {
+        setStatus("connecting");
+        const AgoraRTC = window.AgoraRTC;
+        AgoraRTC.setLogLevel(4);
+
+        const client = AgoraRTC.createClient({ mode:"rtc", codec:"opus" });
+        clientRef.current = client;
+
+        // Escuta quem está publicando áudio
+        client.on("user-published", async (user, mediaType) => {
+          if (mediaType === "audio") {
+            await client.subscribe(user, "audio");
+            user.audioTrack.play();
+            if (mounted) setSpeaking(user.uid);
+          }
+        });
+
+        client.on("user-unpublished", (user, mediaType) => {
+          if (mediaType === "audio" && mounted) setSpeaking(null);
+        });
+
+        // Busca token do servidor (ou usa sem token se certificado desativado)
+        let token = null;
+        try {
+          const r = await fetch(`/api/radio-token?uid=0`);
+          if (r.ok) {
+            const d = await r.json();
+            token = d.token || null;
+          }
+        } catch { token = null; }
+
+        // Usa nome como UID string
+        await client.join(AGORA_APP_ID, AGORA_CHANNEL, token, userName);
+        if (mounted) setStatus("ready");
+      } catch(e) {
+        if (mounted) {
+          setError("Erro ao conectar: " + (e.message || e.code || String(e)));
+          setStatus("idle");
         }
-      });
-      // Remove peers que saíram
-      Object.keys(peers.current).forEach(pid => {
-        if (!data[pid]) { peers.current[pid]?.close(); delete peers.current[pid]; }
-      });
-    });
+      }
+    };
 
-    // Escuta status de quem está falando
-    dbRef("guarnicao/radio_talking").on("value", snap => {
-      const data = snap.val();
-      if (data && data.name !== userName) { setSpeaking(data.name); setStatus("listening"); }
-      else if (!data) { setSpeaking(null); setStatus(s => s === "listening" ? "ready" : s); }
-    });
-
-    setStatus("ready");
+    join();
 
     return () => {
-      presenceRef.remove();
-      dbRef("guarnicao/radio_presence").off();
-      dbRef("guarnicao/radio_talking").off();
-      Object.values(peers.current).forEach(pc => pc.close());
-      peers.current = {};
+      mounted = false;
+      if (localAudio.current) { localAudio.current.stop(); localAudio.current.close(); }
+      clientRef.current?.leave().catch(()=>{});
     };
+  }, [sdkReady, userName]);
+
+  // Escuta via Firebase quem está falando (para mostrar nome)
+  useEffect(() => {
+    if (!_db) return;
+    const ref = _db.ref("guarnicao/radio_talking");
+    ref.on("value", snap => {
+      const data = snap.val();
+      if (data && data.name !== userName) {
+        setSpeaking(data.name);
+        setStatus(s => s === "ready" ? "listening" : s);
+      } else if (!data) {
+        setSpeaking(null);
+        setStatus(s => s === "listening" ? "ready" : s);
+      }
+    });
+    return () => ref.off();
   }, [_db]);
 
   const startTalking = async () => {
     if (pressing.current || status !== "ready") return;
     pressing.current = true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:true }, video:false });
-      localStream.current = stream;
-      // Adiciona track a todos os peers existentes
-      Object.values(peers.current).forEach(pc => {
-        stream.getTracks().forEach(t => { try { pc.addTrack(t, stream); } catch(e){} });
+      const AgoraRTC = window.AgoraRTC;
+      const track = await AgoraRTC.createMicrophoneAudioTrack({
+        encoderConfig: "speech_low_quality",
+        AEC: true, ANS: true, AGC: true,
       });
+      localAudio.current = track;
+      await clientRef.current.publish([track]);
       setStatus("talking");
-      dbRef("guarnicao/radio_talking").set({ name: userName, ts: Date.now() });
+      if (_db) _db.ref("guarnicao/radio_talking").set({ name: userName, ts: Date.now() });
       addLog(userName);
     } catch(e) {
-      setError("Microfone bloqueado. Permita o acesso.");
+      setError("Microfone bloqueado. Permita o acesso ao microfone.");
       pressing.current = false;
     }
   };
@@ -256,17 +238,22 @@ function RadioTab({ userName }) {
   const stopTalking = async () => {
     if (!pressing.current) return;
     pressing.current = false;
-    if (localStream.current) {
-      localStream.current.getTracks().forEach(t => t.stop());
-      localStream.current = null;
-    }
-    dbRef("guarnicao/radio_talking").remove();
-    setStatus("ready");
+    try {
+      if (localAudio.current) {
+        await clientRef.current.unpublish([localAudio.current]);
+        localAudio.current.stop();
+        localAudio.current.close();
+        localAudio.current = null;
+      }
+      if (_db) _db.ref("guarnicao/radio_talking").remove();
+      setStatus("ready");
+    } catch(e) { console.error(e); }
   };
 
+  const isOnline = status === "ready" || status === "talking" || status === "listening";
   const pttColor = status==="talking" ? C.green : status==="listening" ? C.amber : status==="ready" ? C.blue : C.muted;
   const pttBg    = status==="talking" ? "rgba(34,197,94,0.15)" : status==="listening" ? "rgba(245,158,11,0.1)" : status==="ready" ? "rgba(26,111,212,0.12)" : C.card;
-  const pttLabel = status==="talking" ? "🎙 TRANSMITINDO..." : status==="listening" ? `📻 ${speaking||"Alguém"} está falando...` : status==="ready" ? "Segure para falar" : "Conectando...";
+  const pttLabel = status==="talking" ? "🎙 TRANSMITINDO..." : status==="listening" ? `📻 ${speaking||"Alguém"} está falando...` : status==="ready" ? "Segure para falar" : status==="connecting" ? "Conectando ao canal..." : "Aguardando SDK...";
 
   return (
     <div style={{ padding:"16px", display:"flex", flexDirection:"column", gap:14, paddingBottom:40 }}>
@@ -275,41 +262,71 @@ function RadioTab({ userName }) {
           <div style={{ color:C.white, fontWeight:800, fontSize:15 }}>📻 Canal Guarnição</div>
           <div style={{ color:C.muted, fontSize:11, marginTop:2 }}>Push-to-talk · Voz em tempo real</div>
         </div>
-        <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 12px", borderRadius:6, background:connected?"rgba(34,197,94,0.1)":"rgba(74,85,104,0.2)", border:`1px solid ${connected?"rgba(34,197,94,0.3)":C.border}` }}>
-          <span style={{ width:7, height:7, borderRadius:"50%", display:"inline-block", background:connected?C.green:C.muted }}/>
-          <span style={{ fontSize:11, fontWeight:700, color:connected?C.green:C.muted }}>{connected?"Online":"Offline"}</span>
+        <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 12px", borderRadius:6, background:isOnline?"rgba(34,197,94,0.1)":"rgba(74,85,104,0.2)", border:`1px solid ${isOnline?"rgba(34,197,94,0.3)":C.border}` }}>
+          <span style={{ width:7, height:7, borderRadius:"50%", display:"inline-block", background:isOnline?C.green:C.muted }}/>
+          <span style={{ fontSize:11, fontWeight:700, color:isOnline?C.green:C.muted }}>{isOnline?"Online":"Offline"}</span>
         </div>
       </div>
 
-      {error && <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:8, padding:"12px 14px", color:C.red, fontSize:13, fontWeight:600 }}>⚠ {error}</div>}
+      {error && (
+        <div style={{ background:"rgba(239,68,68,0.08)", border:"1px solid rgba(239,68,68,0.3)", borderRadius:8, padding:"12px 14px", color:C.red, fontSize:13, fontWeight:600, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <span>⚠ {error}</span>
+          <button onClick={()=>setError("")} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:16 }}>×</button>
+        </div>
+      )}
 
       <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:16, padding:"20px 0" }}>
         <div style={{ position:"relative", display:"flex", alignItems:"center", justifyContent:"center" }}>
           {(status==="talking"||status==="listening") && <>
-            <div style={{ position:"absolute", width:160, height:160, borderRadius:"50%", border:`2px solid ${pttColor}`, opacity:0.4, animation:"ringPulse 1.2s ease-out infinite" }}/>
-            <div style={{ position:"absolute", width:140, height:140, borderRadius:"50%", border:`2px solid ${pttColor}`, opacity:0.25, animation:"ringPulse 1.2s ease-out infinite 0.3s" }}/>
+            <div style={{ position:"absolute", width:170, height:170, borderRadius:"50%", border:`2px solid ${pttColor}`, opacity:0.35, animation:"ringPulse 1.2s ease-out infinite" }}/>
+            <div style={{ position:"absolute", width:148, height:148, borderRadius:"50%", border:`2px solid ${pttColor}`, opacity:0.2, animation:"ringPulse 1.2s ease-out infinite 0.4s" }}/>
           </>}
           <button
-            onPointerDown={startTalking} onPointerUp={stopTalking} onPointerLeave={stopTalking}
-            disabled={status==="connecting"||status==="listening"||status==="idle"}
-            style={{ width:120, height:120, borderRadius:"50%", background:pttBg, border:`3px solid ${pttColor}`, cursor:status==="listening"?"not-allowed":"pointer", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6, transition:"all 0.15s", boxShadow:status==="talking"?`0 0 32px ${pttColor}55`:"none", outline:"none", userSelect:"none", WebkitUserSelect:"none", touchAction:"none" }}>
-            <span style={{ fontSize:36 }}>{status==="listening"?"📻":"🎙"}</span>
-            <span style={{ color:pttColor, fontSize:9, fontWeight:800, textTransform:"uppercase", letterSpacing:0.8 }}>{status==="talking"?"solte":"segure"}</span>
+            onPointerDown={startTalking}
+            onPointerUp={stopTalking}
+            onPointerLeave={stopTalking}
+            disabled={status!=="ready"}
+            style={{
+              width:128, height:128, borderRadius:"50%",
+              background:pttBg,
+              border:`3px solid ${pttColor}`,
+              cursor:status==="ready"?"pointer":"not-allowed",
+              display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:6,
+              transition:"all 0.15s",
+              boxShadow:status==="talking"?`0 0 40px ${pttColor}66`:"none",
+              outline:"none", userSelect:"none", WebkitUserSelect:"none", touchAction:"none",
+            }}>
+            <span style={{ fontSize:40 }}>{status==="listening"?"📻":"🎙"}</span>
+            <span style={{ color:pttColor, fontSize:9, fontWeight:900, textTransform:"uppercase", letterSpacing:1 }}>
+              {status==="talking"?"SOLTE":"SEGURE"}
+            </span>
           </button>
         </div>
-        <div style={{ color:pttColor, fontSize:14, fontWeight:700, textAlign:"center", minHeight:22, animation:status==="talking"?"blink 1s infinite":"none" }}>{pttLabel}</div>
-        {status==="ready" && <div style={{ color:C.muted, fontSize:12, textAlign:"center", maxWidth:220, lineHeight:1.5 }}>Segure o botão enquanto fala.<br/>Solte para liberar o canal.</div>}
+
+        <div style={{ color:pttColor, fontSize:14, fontWeight:700, textAlign:"center", minHeight:22, animation:status==="talking"?"blink 1s infinite":"none" }}>
+          {pttLabel}
+        </div>
+        {status==="ready" && (
+          <div style={{ color:C.muted, fontSize:12, textAlign:"center", maxWidth:220, lineHeight:1.5 }}>
+            Segure o botão enquanto fala.<br/>Solte para liberar o canal.
+          </div>
+        )}
       </div>
 
       {log.length > 0 && (
         <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
           <div style={{ color:C.muted, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:1 }}>Histórico do canal</div>
-          {log.map(l => <div key={l.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:7, padding:"8px 12px", display:"flex", alignItems:"center", justifyContent:"space-between" }}><span style={{ color:C.text, fontSize:13, fontWeight:600 }}>🎙 {l.name}</span><span style={{ color:C.muted, fontSize:11 }}>{l.ts}</span></div>)}
+          {log.map(l => (
+            <div key={l.id} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:7, padding:"8px 12px", display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+              <span style={{ color:C.text, fontSize:13, fontWeight:600 }}>🎙 {l.name}</span>
+              <span style={{ color:C.muted, fontSize:11 }}>{l.ts}</span>
+            </div>
+          ))}
         </div>
       )}
 
       <style>{`
-        @keyframes ringPulse { 0%{transform:scale(1);opacity:0.4} 100%{transform:scale(1.35);opacity:0} }
+        @keyframes ringPulse { 0%{transform:scale(1);opacity:0.35} 100%{transform:scale(1.4);opacity:0} }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
       `}</style>
     </div>
