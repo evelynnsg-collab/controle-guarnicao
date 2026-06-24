@@ -424,59 +424,59 @@ function OcorrenciaTab({ userName }) {
 }
 
 // ─── ABA ADMIN - ESCALA ───────────────────────────────────────────────────────
-const POSTOS = [
-  "SSO / Apoio linha de bloqueios",
-  "Linha de bloqueios",
-  "Apoio linha de bloqueios",
-  "Mezanino / Ronda espaço cultural",
-  "Plataforma 6 e 7 / Ronda plataforma 8",
-  "Plataforma 3",
-  "Plataforma 3 / Após café plataforma 4",
-  "Apoiar postos / Ronda área livre",
+const POSTOS_CONFIG = [
+  { id:"sso",      label:"SSO / Apoio linha de bloqueios",          cafe_offset:0,  almoco_offset:0  },
+  { id:"bloq1",    label:"Linha de bloqueios",                       cafe_offset:30, almoco_offset:60 },
+  { id:"bloq2",    label:"Linha de bloqueios",                       cafe_offset:0,  almoco_offset:0  },
+  { id:"bloq3",    label:"Linha de bloqueios",                       cafe_offset:30, almoco_offset:60 },
+  { id:"apoio",    label:"Apoio linha de bloqueios",                 cafe_offset:0,  almoco_offset:0  },
+  { id:"mez1",     label:"Mezanino / Ronda espaço cultural",         cafe_offset:0,  almoco_offset:30 },
+  { id:"mez2",     label:"Mezanino / Ronda espaço cultural",         cafe_offset:30, almoco_offset:90 },
+  { id:"plat67a",  label:"Plataforma 6 e 7 / Ronda plataforma 8",   cafe_offset:0,  almoco_offset:30 },
+  { id:"plat67b",  label:"Plataforma 6 e 7 / Ronda plataforma 8",   cafe_offset:30, almoco_offset:90 },
+  { id:"plat3a",   label:"Plataforma 3",                             cafe_offset:30, almoco_offset:90 },
+  { id:"plat3b",   label:"Plataforma 3",                             cafe_offset:0,  almoco_offset:30 },
+  { id:"plat34",   label:"Plataforma 3 / Após café plataforma 4",   cafe_offset:30, almoco_offset:60 },
+  { id:"ronda1",   label:"Apoiar postos / Ronda área livre",         cafe_offset:60, almoco_offset:120},
+  { id:"ronda2",   label:"Apoiar postos / Ronda área livre",         cafe_offset:30, almoco_offset:60 },
 ];
 
-// Distribui automaticamente postos e intervalos
-function gerarEscala(colaboradores) {
+function fmtHora(baseMin, offsetMin) {
+  const t = baseMin + offsetMin;
+  const h = Math.floor(t/60).toString().padStart(2,"0");
+  const m = (t%60).toString().padStart(2,"0");
+  return h + ":" + m;
+}
+
+// Gera escala com revezamento de postos
+function gerarEscala(colaboradores, postoOffset = 0) {
   const ativos = colaboradores.filter(c => c.trabalha);
   const total = ativos.length;
   if (total === 0) return [];
 
-  // Horários de café escalonados (30 min cada, começando 08:00)
-  const cafes = [];
-  for (let i = 0; i < total; i++) {
-    const base = 8 * 60 + (i % 2 === 0 ? 0 : 30);
-    const start = base + Math.floor(i / 2) * 0;
-    const h1 = Math.floor(start / 60).toString().padStart(2,"0");
-    const m1 = (start % 60).toString().padStart(2,"0");
-    const end = start + 30;
-    const h2 = Math.floor(end / 60).toString().padStart(2,"0");
-    const m2 = (end % 60).toString().padStart(2,"0");
-    cafes.push(`${h1}:${m1} às ${h2}:${m2}`);
-  }
+  // Revezamento: cada colaborador pega um posto diferente a cada geração
+  const postosUsados = POSTOS_CONFIG.slice(0, total);
 
-  // Horários de almoço escalonados (1h cada, começando 10:00)
-  const almocos = [];
-  for (let i = 0; i < total; i++) {
-    const base = 10 * 60 + (i % 2 === 0 ? 30 : 0);
-    const start = base + Math.floor(i / 2) * 0;
-    const h1 = Math.floor(start / 60).toString().padStart(2,"0");
-    const m1 = (start % 60).toString().padStart(2,"0");
-    const end = start + 60;
-    const h2 = Math.floor(end / 60).toString().padStart(2,"0");
-    const m2 = (end % 60).toString().padStart(2,"0");
-    almocos.push(`${h1}:${m1} às ${h2}:${m2}`);
-  }
-
-  return ativos.map((c, i) => ({
-    nome: c.nome,
-    posto: POSTOS[i % POSTOS.length],
-    cafe: cafes[i] || "—",
-    almoco: almocos[i] || "—",
-  }));
+  return ativos.map((c, i) => {
+    const postoIdx = (i + postoOffset) % POSTOS_CONFIG.length;
+    const posto = POSTOS_CONFIG[postoIdx];
+    const cafeBase  = 8 * 60; // 08:00
+    const almocoBase = 10 * 60; // 10:00
+    const cafeInicio  = fmtHora(cafeBase,  posto.cafe_offset);
+    const cafeFim     = fmtHora(cafeBase,  posto.cafe_offset + 30);
+    const almocoInicio = fmtHora(almocoBase, posto.almoco_offset);
+    const almocoFim    = fmtHora(almocoBase, posto.almoco_offset + 60);
+    return {
+      nome: c.nome,
+      posto: posto.label,
+      cafe: `${cafeInicio} às ${cafeFim}`,
+      almoco: `${almocoInicio} às ${almocoFim}`,
+    };
+  });
 }
 
 function AdminTab() {
-  const [authed, setAuthed] = useState(false);
+  const [authed, setAuthed]       = useState(false);
   const [loginUser, setLoginUser] = useState("");
   const [loginPass, setLoginPass] = useState("");
   const [loginError, setLoginError] = useState("");
@@ -487,11 +487,17 @@ function AdminTab() {
     try { return JSON.parse(localStorage.getItem("gn_colaboradores")) || []; } catch { return []; }
   });
   const [novoNome, setNovoNome] = useState("");
-  const [escala, setEscala] = useState([]);
-  const [view, setView] = useState("colaboradores");
-  const [toast, setToast] = useState("");
+  const [escala, setEscala]     = useState([]);
+  const [postoOffset, setPostoOffset] = useState(() => {
+    return parseInt(localStorage.getItem("gn_posto_offset") || "0");
+  });
+  const [view, setView]         = useState("colaboradores");
+  const [toast, setToast]       = useState("");
+  const [importando, setImportando] = useState(false);
+  const [previewImagem, setPreviewImagem] = useState(null);
+  const fileInputRef = useRef(null);
 
-  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
+  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),3000); };
   const saveColabs = (list) => { setColaboradores(list); localStorage.setItem("gn_colaboradores", JSON.stringify(list)); };
 
   const handleLogin = () => {
@@ -513,15 +519,90 @@ function AdminTab() {
 
   const remover = (nome) => { saveColabs(colaboradores.filter(c=>c.nome!==nome)); };
 
+  // Importa foto da escala e reconhece T/F via Claude API
+  const handleImportarFoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportando(true);
+    setPreviewImagem(URL.createObjectURL(file));
+
+    try {
+      // Converte imagem para base64
+      const base64 = await new Promise((res, rej) => {
+        const reader = new FileReader();
+        reader.onload = () => res(reader.result.split(",")[1]);
+        reader.onerror = rej;
+        reader.readAsDataURL(file);
+      });
+
+      const mediaType = file.type || "image/jpeg";
+
+      // Chama Claude API para reconhecer T/F na escala
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 1000,
+          messages: [{
+            role: "user",
+            content: [
+              {
+                type: "image",
+                source: { type: "base64", media_type: mediaType, data: base64 }
+              },
+              {
+                type: "text",
+                text: `Esta é uma escala de trabalho. Analise a tabela e retorne um JSON com o seguinte formato:
+{"colaboradores": [{"nome": "Nome", "trabalha": true/false}]}
+
+Regras:
+- Se a célula contém "T" (trabalha) → trabalha: true
+- Se a célula contém "F" (folga) ou está vazia → trabalha: false
+- Use o nome exato que aparece na tabela
+- Retorne APENAS o JSON, sem texto adicional`
+              }
+            ]
+          }]
+        })
+      });
+
+      const data = await resp.json();
+      const text = data.content?.find(b => b.type === "text")?.text || "";
+      const clean = text.replace(/\`\`\`json|\`\`\`/g, "").trim();
+      const parsed = JSON.parse(clean);
+
+      if (parsed.colaboradores && Array.isArray(parsed.colaboradores)) {
+        // Mescla com colaboradores existentes ou cria novos
+        const novos = parsed.colaboradores.map(c => ({
+          nome: c.nome,
+          trabalha: c.trabalha === true || c.trabalha === "true"
+        }));
+        saveColabs(novos);
+        const trabalhando = novos.filter(c=>c.trabalha).length;
+        const folga = novos.filter(c=>!c.trabalha).length;
+        showToast(`✓ ${novos.length} colaboradores importados! ${trabalhando} trabalham, ${folga} de folga.`);
+      } else {
+        showToast("Não foi possível ler a escala. Tente outra foto.");
+      }
+    } catch(err) {
+      showToast("Erro ao processar imagem. Verifique a foto e tente novamente.");
+    }
+    setImportando(false);
+  };
+
   const gerarEscalaClick = () => {
-    const e = gerarEscala(colaboradores);
+    const e = gerarEscala(colaboradores, postoOffset);
     setEscala(e);
     setView("escala");
-    // Salva no Firebase
+    // Avança offset para próxima geração (revezamento)
+    const novoOffset = (postoOffset + 1) % POSTOS_CONFIG.length;
+    setPostoOffset(novoOffset);
+    localStorage.setItem("gn_posto_offset", String(novoOffset));
     if (_db) {
       dbRef(`guarnicao/escala/${mes.replace("-","_")}`).set({ mes, gerada: new Date().toISOString(), dados: e });
     }
-    showToast("✓ Escala gerada!");
+    showToast("✓ Escala gerada com revezamento!");
   };
 
   const copiarEscala = () => {
@@ -563,41 +644,65 @@ function AdminTab() {
 
       {/* Sub-abas */}
       <div style={{ display:"flex", gap:0, background:C.card, borderRadius:10, padding:4 }}>
-        {[{key:"colaboradores",label:"👥 Colaboradores"},{key:"escala",label:"📅 Escala",disabled:escala.length===0}].map(tab => (
+        {[{key:"colaboradores",label:"👥 Equipe"},{key:"escala",label:"📅 Escala",disabled:escala.length===0}].map(tab => (
           <button key={tab.key} disabled={tab.disabled} onClick={()=>!tab.disabled&&setView(tab.key)} style={{ flex:1, padding:"9px 6px", background:view===tab.key?C.surface:"transparent", border:view===tab.key?`1px solid ${C.border}`:"1px solid transparent", borderRadius:8, color:tab.disabled?C.muted:view===tab.key?C.white:C.muted, fontSize:12, fontWeight:700, cursor:tab.disabled?"not-allowed":"pointer" }}>{tab.label}</button>
         ))}
       </div>
 
       {view==="colaboradores" && (
         <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+
           {/* Mês */}
           <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
             <label style={{ color:C.text, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.8 }}>Mês de referência</label>
             <input type="month" value={mes} onChange={e=>setMes(e.target.value)} style={inp}/>
           </div>
 
-          {/* Adicionar colaborador */}
+          {/* Importar foto da escala */}
+          <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px", display:"flex", flexDirection:"column", gap:10 }}>
+            <div style={{ color:C.white, fontWeight:700, fontSize:14 }}>📷 Importar escala por foto</div>
+            <div style={{ color:C.muted, fontSize:12, lineHeight:1.5 }}>
+              Tire uma foto da sua escala mensal. A IA reconhece automaticamente quem está com <strong style={{color:C.green}}>T</strong> (trabalha) ou <strong style={{color:C.red}}>F</strong> (folga).
+            </div>
+
+            {previewImagem && (
+              <img src={previewImagem} alt="Preview" style={{ width:"100%", borderRadius:8, border:`1px solid ${C.border}`, maxHeight:200, objectFit:"contain" }}/>
+            )}
+
+            <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImportarFoto} style={{ display:"none" }}/>
+            <button
+              onClick={()=>fileInputRef.current?.click()}
+              disabled={importando}
+              style={{ background:importando?"rgba(26,111,212,0.1)":"rgba(26,111,212,0.15)", border:`1px solid ${importando?C.border:C.blue}`, borderRadius:8, padding:"13px", color:importando?C.muted:C.blue, fontSize:14, fontWeight:800, cursor:importando?"not-allowed":"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+              {importando ? <><span style={{animation:"spin 1s linear infinite",display:"inline-block"}}>⟳</span> Lendo escala...</> : "📷 Selecionar foto da escala"}
+            </button>
+          </div>
+
+          {/* Adicionar colaborador manualmente */}
           <div style={{ display:"flex", gap:8 }}>
-            <input value={novoNome} onChange={e=>setNovoNome(e.target.value)} placeholder="Nome do colaborador" style={{...inp,flex:1}} onKeyDown={e=>e.key==="Enter"&&addColaborador()}/>
+            <input value={novoNome} onChange={e=>setNovoNome(e.target.value)} placeholder="Adicionar colaborador manualmente" style={{...inp,flex:1}} onKeyDown={e=>e.key==="Enter"&&addColaborador()}/>
             <button onClick={addColaborador} style={{ background:C.blue, border:"none", borderRadius:8, padding:"12px 16px", color:"white", fontSize:14, fontWeight:800, cursor:"pointer", whiteSpace:"nowrap" }}>+ Add</button>
           </div>
 
           {/* Lista colaboradores */}
           {colaboradores.length===0 ? (
-            <div style={{ color:C.muted, textAlign:"center", padding:"24px 0", fontSize:13 }}>Nenhum colaborador cadastrado</div>
+            <div style={{ color:C.muted, textAlign:"center", padding:"24px 0", fontSize:13 }}>Importe uma foto ou adicione manualmente</div>
           ) : (
             <div style={{ display:"flex", flexDirection:"column", gap:6 }}>
-              <div style={{ color:C.muted, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:1 }}>
-                {colaboradores.filter(c=>c.trabalha).length} trabalhando · {colaboradores.filter(c=>!c.trabalha).length} de folga
+              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+                <div style={{ color:C.muted, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:1 }}>
+                  {colaboradores.filter(c=>c.trabalha).length} trabalhando · {colaboradores.filter(c=>!c.trabalha).length} de folga
+                </div>
+                <div style={{ color:C.muted, fontSize:10 }}>Revezamento #{postoOffset+1}</div>
               </div>
               {colaboradores.map(c => (
                 <div key={c.nome} style={{ background:C.card, border:`1px solid ${c.trabalha?C.border:"rgba(239,68,68,0.3)"}`, borderRadius:9, padding:"12px 14px", display:"flex", alignItems:"center", gap:10 }}>
-                  <button onClick={()=>toggleTrabalha(c.nome)} style={{ width:22, height:22, borderRadius:6, border:`2px solid ${c.trabalha?C.green:C.red}`, background:c.trabalha?"rgba(34,197,94,0.15)":"rgba(239,68,68,0.1)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                    {c.trabalha && <span style={{ color:C.green, fontSize:12 }}>✓</span>}
+                  <button onClick={()=>toggleTrabalha(c.nome)} style={{ width:28, height:28, borderRadius:6, border:`2px solid ${c.trabalha?C.green:C.red}`, background:c.trabalha?"rgba(34,197,94,0.15)":"rgba(239,68,68,0.1)", cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0, fontSize:13, fontWeight:900, color:c.trabalha?C.green:C.red }}>
+                    {c.trabalha ? "T" : "F"}
                   </button>
                   <span style={{ color:c.trabalha?C.white:C.muted, fontWeight:600, fontSize:14, flex:1, textDecoration:c.trabalha?"none":"line-through" }}>{c.nome}</span>
                   <span style={{ fontSize:10, fontWeight:700, color:c.trabalha?C.green:C.red, textTransform:"uppercase" }}>{c.trabalha?"Trabalha":"Folga"}</span>
-                  <button onClick={()=>remover(c.nome)} style={{ background:"transparent", border:"none", color:C.muted, fontSize:16, cursor:"pointer", padding:"0 4px" }}>×</button>
+                  <button onClick={()=>remover(c.nome)} style={{ background:"transparent", border:"none", color:C.muted, fontSize:18, cursor:"pointer", padding:"0 4px" }}>×</button>
                 </div>
               ))}
             </div>
@@ -605,7 +710,7 @@ function AdminTab() {
 
           {colaboradores.filter(c=>c.trabalha).length > 0 && (
             <button onClick={gerarEscalaClick} style={{ background:"linear-gradient(135deg,#1A6FD4,#0D9B52)", border:"none", borderRadius:9, padding:"16px", color:"white", fontSize:16, fontWeight:900, cursor:"pointer", boxShadow:"0 4px 20px rgba(26,111,212,0.3)" }}>
-              ⚡ Gerar escala automaticamente
+              ⚡ Gerar escala com revezamento
             </button>
           )}
         </div>
@@ -614,26 +719,25 @@ function AdminTab() {
       {view==="escala" && escala.length>0 && (
         <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
           <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:10, padding:"12px 14px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-            <div style={{ color:C.white, fontWeight:700, fontSize:14 }}>Escala de Postos</div>
+            <div style={{ color:C.white, fontWeight:700, fontSize:14 }}>📋 Escala de Postos</div>
             <div style={{ color:C.muted, fontSize:12 }}>{mes} · {escala.length} colaboradores</div>
           </div>
 
-          {/* Cards da escala */}
           {escala.map((e,i) => (
-            <div key={i} style={{ background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"14px 16px" }}>
+            <div key={i} style={{ background:C.card, border:`1px solid ${C.border}`, borderLeft:`3px solid ${C.blue}`, borderRadius:10, padding:"14px 16px" }}>
               <div style={{ color:C.white, fontWeight:800, fontSize:15, marginBottom:8 }}>{e.nome}</div>
-              <div style={{ display:"flex", flexDirection:"column", gap:4 }}>
+              <div style={{ display:"flex", flexDirection:"column", gap:5 }}>
                 <div style={{ display:"flex", gap:8, alignItems:"flex-start" }}>
-                  <span style={{ color:C.muted, fontSize:11, fontWeight:700, textTransform:"uppercase", minWidth:60 }}>Posto</span>
-                  <span style={{ color:C.text, fontSize:12, flex:1 }}>{e.posto}</span>
+                  <span style={{ color:C.muted, fontSize:10, fontWeight:700, textTransform:"uppercase", minWidth:56, paddingTop:1 }}>Posto</span>
+                  <span style={{ color:C.text, fontSize:13, flex:1, fontWeight:600 }}>{e.posto}</span>
                 </div>
                 <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                  <span style={{ color:C.muted, fontSize:11, fontWeight:700, textTransform:"uppercase", minWidth:60 }}>Café</span>
-                  <span style={{ color:C.amber, fontSize:12, fontWeight:600 }}>{e.cafe}</span>
+                  <span style={{ color:C.muted, fontSize:10, fontWeight:700, textTransform:"uppercase", minWidth:56 }}>Café</span>
+                  <span style={{ color:C.amber, fontSize:13, fontWeight:700 }}>☕ {e.cafe}</span>
                 </div>
                 <div style={{ display:"flex", gap:8, alignItems:"center" }}>
-                  <span style={{ color:C.muted, fontSize:11, fontWeight:700, textTransform:"uppercase", minWidth:60 }}>Almoço</span>
-                  <span style={{ color:C.green, fontSize:12, fontWeight:600 }}>{e.almoco}</span>
+                  <span style={{ color:C.muted, fontSize:10, fontWeight:700, textTransform:"uppercase", minWidth:56 }}>Almoço</span>
+                  <span style={{ color:C.green, fontSize:13, fontWeight:700 }}>🍽 {e.almoco}</span>
                 </div>
               </div>
             </div>
@@ -643,14 +747,16 @@ function AdminTab() {
             <button onClick={copiarEscala} style={{ background:"rgba(245,158,11,0.12)", border:"1px solid rgba(245,158,11,0.4)", borderRadius:9, padding:"13px", color:C.amber, fontSize:14, fontWeight:800, cursor:"pointer" }}>📋 Copiar</button>
             <button onClick={enviarWhatsApp} style={{ background:"rgba(18,140,126,0.15)", border:"1px solid rgba(18,140,126,0.4)", borderRadius:9, padding:"13px", color:"#25D366", fontSize:14, fontWeight:800, cursor:"pointer" }}>📲 WhatsApp</button>
           </div>
-          <button onClick={()=>setView("colaboradores")} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:9, padding:"12px", color:C.muted, fontSize:13, fontWeight:700, cursor:"pointer" }}>← Editar colaboradores</button>
+          <button onClick={()=>setView("colaboradores")} style={{ background:"transparent", border:`1px solid ${C.border}`, borderRadius:9, padding:"12px", color:C.muted, fontSize:13, fontWeight:700, cursor:"pointer" }}>← Editar equipe</button>
         </div>
       )}
 
-      {toast && <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", background:"#1A2A3A", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 20px", color:C.white, fontSize:13, fontWeight:700, zIndex:100, whiteSpace:"nowrap" }}>{toast}</div>}
+      {toast && <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", background:"#1A2A3A", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 20px", color:C.white, fontSize:13, fontWeight:700, zIndex:100, whiteSpace:"nowrap", maxWidth:"90vw", textAlign:"center" }}>{toast}</div>}
     </div>
   );
 }
+
+
 
 // ─── TELA DE CADASTRO ─────────────────────────────────────────────────────────
 function RegisterScreen({ onRegister, loading }) {
