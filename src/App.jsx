@@ -381,61 +381,38 @@ Responsável: ${d.responsavel||"—"}`;
 
   // ✨ Melhora escrita localmente após pausa na digitação
   const melhorarAuto = (campo, texto) => {
-    if (!texto || texto.trim().length < 15) return;
+    if (!texto || texto.trim().length < 20) return;
     clearTimeout(timersRef.current[campo]);
-    timersRef.current[campo] = setTimeout(() => {
+    timersRef.current[campo] = setTimeout(async () => {
       const textoAtual = formRef.current[campo];
-      if (!textoAtual || textoAtual.trim().length < 15) return;
+      if (!textoAtual || textoAtual.trim().length < 20) return;
       setIaStatus("melhorando");
-
-      // Melhoria local de texto - sem API externa
-      const melhorar = (t) => {
-        let r = t.trim();
-
-        // Capitaliza início de frases
-        r = r.replace(/(^|[.!?]\s+)([a-záéíóúâêôãõüç])/gi, (m, p, l) => p + l.toUpperCase());
-
-        // Capitaliza primeira letra
-        r = r.charAt(0).toUpperCase() + r.slice(1);
-
-        // Substitui gírias/abreviações por termos formais
-        const subs = [
-          [/pra/gi, "para"], [/pro/gi, "para o"], [/ta/gi, "está"],
-          [/to/gi, "estou"], [/tava/gi, "estava"], [/falou/gi, "informou"],
-          [/foi la/gi, "dirigiu-se ao local"], [/foi lá/gi, "dirigiu-se ao local"],
-          [/caiu/gi, "sofreu queda"], [/cairam/gi, "sofreram queda"],
-          [/passou mal/gi, "apresentou mal-estar"], [/tava passando mal/gi, "apresentava mal-estar"],
-          [/brigou/gi, "envolveu-se em conflito verbal"], [/brigaram/gi, "envolveram-se em conflito verbal"],
-          [/sangrou/gi, "apresentou sangramento"], [/desacordado/gi, "inconsciente"],
-          [/chamou/gi, "acionou"], [/chamamos/gi, "acionamos"],
-          [/fomos/gi, "nos dirigimos"], [/fui/gi, "dirigi-me"],
-          [/chegou/gi, "chegou ao local"], [/viemos/gi, "nos deslocamos"],
-          [/q/gi, "que"], [/vc/gi, "você"], [/vcs/gi, "vocês"],
-          [/tbm/gi, "também"], [/pq/gi, "porque"], [/eh/gi, "é"],
-          [/okay/gi, "encerrado"], [/ok/gi, "confirmado"],
-          [/pessoa/gi, "passageiro(a)"], [/indivíduo/gi, "passageiro(a)"],
-          [/cliente/gi, "passageiro(a)"],
-        ];
-        subs.forEach(([from, to]) => { r = r.replace(from, to); });
-
-        // Garante ponto final
-        if (r && !/[.!?]$/.test(r.trim())) r = r.trim() + ".";
-
-        // Remove espaços duplos
-        r = r.replace(/\s{2,}/g, " ").trim();
-
-        return r;
-      };
-
-      const melhorado = melhorar(textoAtual);
-      if (melhorado !== textoAtual) {
-        setField(campo, melhorado);
-        setIaStatus("pronto");
-        setTimeout(() => setIaStatus(""), 2500);
-      } else {
-        setIaStatus("");
-      }
-    }, 1500);
+      try {
+        const prompts = {
+          ocorrencia:     "Você é um redator técnico ferroviário. Reescreva o texto abaixo de forma mais clara, formal e profissional para um relatório oficial. Corrija gramática, use linguagem técnica adequada, mantenha todos os fatos. Retorne APENAS o texto reescrito, sem introduções ou explicações:",
+          encaminhamento: "Você é um redator técnico ferroviário. Reescreva este encaminhamento de forma mais clara, formal e profissional. Use verbos no passado, linguagem técnica, mantenha todas as ações tomadas. Retorne APENAS o texto reescrito:",
+          situacaoFinal:  "Você é um redator técnico ferroviário. Reescreva esta situação final de forma mais clara e profissional para um relatório oficial. Mantenha o desfecho descrito. Retorne APENAS o texto reescrito:",
+        };
+        const resp = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5",
+            max_tokens: 600,
+            messages: [{ role: "user", content: (prompts[campo] || prompts.ocorrencia) + "\n\n" + textoAtual }],
+          }),
+        });
+        const data = await resp.json();
+        const melhorado = data.content?.find(b => b.type === "text")?.text?.trim();
+        if (melhorado && melhorado.length > 10) {
+          setField(campo, melhorado);
+          setIaStatus("pronto");
+          setTimeout(() => setIaStatus(""), 3000);
+        } else {
+          setIaStatus("");
+        }
+      } catch { setIaStatus(""); }
+    }, 2000);
   };
 
   const inp = { background:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:"13px 14px", color:C.white, fontSize:15, outline:"none", fontFamily:"inherit", width:"100%", lineHeight:1.5, boxSizing:"border-box" };
