@@ -379,35 +379,63 @@ Responsável: ${d.responsavel||"—"}`;
   const handleSalvar    = () => { const e={...form,id:Date.now(),texto:preview||buildText(form)}; const u=[e,...saved].slice(0,50); setSaved(u); localStorage.setItem("gn_ocorrencias",JSON.stringify(u)); showToast("✓ Salvo!"); };
   const handleLimpar    = () => { setForm({...empty,data:today,responsavel:userName||""}); setPreview(""); setView("form"); showToast("Formulário limpo."); };
 
-  // ✨ Melhora escrita automaticamente após pausa na digitação
+  // ✨ Melhora escrita localmente após pausa na digitação
   const melhorarAuto = (campo, texto) => {
-    if (!texto || texto.trim().length < 15) return; // mínimo 15 chars
+    if (!texto || texto.trim().length < 15) return;
     clearTimeout(timersRef.current[campo]);
-    timersRef.current[campo] = setTimeout(async () => {
+    timersRef.current[campo] = setTimeout(() => {
       const textoAtual = formRef.current[campo];
       if (!textoAtual || textoAtual.trim().length < 15) return;
       setIaStatus("melhorando");
-      try {
-        const prompts = {
-          ocorrencia:     "Reescreva este relato de ocorrência ferroviária de forma mais clara e profissional. Mantenha todos os fatos. Retorne APENAS o texto reescrito, sem explicações:",
-          encaminhamento: "Reescreva este encaminhamento de forma mais clara e profissional. Mantenha todas as ações descritas. Retorne APENAS o texto reescrito, sem explicações:",
-          situacaoFinal:  "Reescreva esta situação final de forma mais clara e profissional. Mantenha o desfecho. Retorne APENAS o texto reescrito, sem explicações:",
-        };
-        const r = await fetch("/api/melhorar-campo", {
-          method:"POST", headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({ campo, texto: textoAtual }),
-        });
-        const d = await r.json();
-        const t = d.texto?.trim();
-        if (t && t !== textoAtual) {
-          setField(campo, t);
-          setIaStatus("pronto");
-          setTimeout(() => setIaStatus(""), 2000);
-        } else {
-          setIaStatus("");
-        }
-      } catch { setIaStatus(""); }
-    }, 2500); // 2.5 segundos após parar de digitar
+
+      // Melhoria local de texto - sem API externa
+      const melhorar = (t) => {
+        let r = t.trim();
+
+        // Capitaliza início de frases
+        r = r.replace(/(^|[.!?]\s+)([a-záéíóúâêôãõüç])/gi, (m, p, l) => p + l.toUpperCase());
+
+        // Capitaliza primeira letra
+        r = r.charAt(0).toUpperCase() + r.slice(1);
+
+        // Substitui gírias/abreviações por termos formais
+        const subs = [
+          [/pra/gi, "para"], [/pro/gi, "para o"], [/ta/gi, "está"],
+          [/to/gi, "estou"], [/tava/gi, "estava"], [/falou/gi, "informou"],
+          [/foi la/gi, "dirigiu-se ao local"], [/foi lá/gi, "dirigiu-se ao local"],
+          [/caiu/gi, "sofreu queda"], [/cairam/gi, "sofreram queda"],
+          [/passou mal/gi, "apresentou mal-estar"], [/tava passando mal/gi, "apresentava mal-estar"],
+          [/brigou/gi, "envolveu-se em conflito verbal"], [/brigaram/gi, "envolveram-se em conflito verbal"],
+          [/sangrou/gi, "apresentou sangramento"], [/desacordado/gi, "inconsciente"],
+          [/chamou/gi, "acionou"], [/chamamos/gi, "acionamos"],
+          [/fomos/gi, "nos dirigimos"], [/fui/gi, "dirigi-me"],
+          [/chegou/gi, "chegou ao local"], [/viemos/gi, "nos deslocamos"],
+          [/q/gi, "que"], [/vc/gi, "você"], [/vcs/gi, "vocês"],
+          [/tbm/gi, "também"], [/pq/gi, "porque"], [/eh/gi, "é"],
+          [/okay/gi, "encerrado"], [/ok/gi, "confirmado"],
+          [/pessoa/gi, "passageiro(a)"], [/indivíduo/gi, "passageiro(a)"],
+          [/cliente/gi, "passageiro(a)"],
+        ];
+        subs.forEach(([from, to]) => { r = r.replace(from, to); });
+
+        // Garante ponto final
+        if (r && !/[.!?]$/.test(r.trim())) r = r.trim() + ".";
+
+        // Remove espaços duplos
+        r = r.replace(/\s{2,}/g, " ").trim();
+
+        return r;
+      };
+
+      const melhorado = melhorar(textoAtual);
+      if (melhorado !== textoAtual) {
+        setField(campo, melhorado);
+        setIaStatus("pronto");
+        setTimeout(() => setIaStatus(""), 2500);
+      } else {
+        setIaStatus("");
+      }
+    }, 1500);
   };
 
   const inp = { background:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:"13px 14px", color:C.white, fontSize:15, outline:"none", fontFamily:"inherit", width:"100%", lineHeight:1.5, boxSizing:"border-box" };
