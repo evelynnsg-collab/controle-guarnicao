@@ -342,7 +342,9 @@ function OcorrenciaTab({ userName }) {
   const [toast, setToast]       = useState("");
   const [saved, setSaved]       = useState(() => { try { return JSON.parse(localStorage.getItem("gn_ocorrencias"))||[]; } catch { return []; } });
   const [view, setView]         = useState("form");
-  const [melhorando, setMelhorando] = useState({}); // { ocorrencia: bool, encaminhamento: bool, situacaoFinal: bool }
+  const [melhorandoOc, setMelhorandoOc] = useState(false);
+  const [melhorandoEn, setMelhorandoEn] = useState(false);
+  const [melhorandoSf, setMelhorandoSf] = useState(false);
 
   const setField = (key, val) => setForm(p => ({...p,[key]:val}));
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),3000); };
@@ -374,43 +376,30 @@ Responsável: ${d.responsavel||"—"}`;
   const handleSalvar    = () => { const e={...form,id:Date.now(),texto:preview||buildText(form)}; const u=[e,...saved].slice(0,50); setSaved(u); localStorage.setItem("gn_ocorrencias",JSON.stringify(u)); showToast("✓ Salvo!"); };
   const handleLimpar    = () => { setForm({...empty,data:today,responsavel:userName||""}); setPreview(""); setView("form"); showToast("Formulário limpo."); };
 
-  // ✨ Melhora um campo específico usando Claude API
-  const melhorarCampo = async (campo) => {
+  // ✨ Melhora escrita com IA
+  const melhorar = async (campo, setLoading) => {
     const texto = form[campo];
-    if (!texto || !texto.trim()) { showToast("Preencha o campo antes de melhorar."); return; }
-    setMelhorando(p => ({...p, [campo]:true}));
+    if (!texto.trim()) { showToast("Preencha o campo antes de melhorar."); return; }
+    setLoading(true);
     try {
-      const prompts = {
-        ocorrencia:     "Você é um assistente de escrita para relatórios operacionais ferroviários. Reescreva o seguinte relato de ocorrência de forma mais clara, objetiva e profissional, usando linguagem formal adequada para documentação oficial. Mantenha todos os fatos. Retorne APENAS o texto reescrito, sem comentários:",
-        encaminhamento: "Você é um assistente de escrita para relatórios operacionais ferroviários. Reescreva o seguinte encaminhamento de forma mais clara, objetiva e profissional, usando linguagem formal. Mantenha todas as ações descritas. Retorne APENAS o texto reescrito, sem comentários:",
-        situacaoFinal:  "Você é um assistente de escrita para relatórios operacionais ferroviários. Reescreva a seguinte situação final de forma mais clara, objetiva e profissional, usando linguagem formal. Mantenha o desfecho descrito. Retorne APENAS o texto reescrito, sem comentários:",
+      const p = {
+        ocorrencia:     "Reescreva este relato de ocorrência ferroviária de forma mais clara e profissional. Mantenha todos os fatos. Retorne APENAS o texto:",
+        encaminhamento: "Reescreva este encaminhamento de forma mais clara e profissional. Mantenha todas as ações. Retorne APENAS o texto:",
+        situacaoFinal:  "Reescreva esta situação final de forma mais clara e profissional. Mantenha o desfecho. Retorne APENAS o texto:",
       };
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({ model:"claude-haiku-4-5", max_tokens:500,
+          messages:[{role:"user", content:p[campo]+"
 
-      const resp = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-haiku-4-5",
-          max_tokens: 500,
-          messages: [{ role:"user", content: prompts[campo] + "
-
-" + texto }],
-        }),
+"+texto}] }),
       });
-
-      if (!resp.ok) throw new Error("API error " + resp.status);
-      const data = await resp.json();
-      const melhorado = data.content?.find(b => b.type === "text")?.text?.trim();
-      if (melhorado) {
-        setField(campo, melhorado);
-        showToast("✓ Escrita melhorada!");
-      } else {
-        throw new Error("Resposta vazia");
-      }
-    } catch(e) {
-      showToast("Erro ao melhorar. Tente novamente.");
-    }
-    setMelhorando(p => ({...p, [campo]:false}));
+      const d = await r.json();
+      const t = d.content?.find(b=>b.type==="text")?.text?.trim();
+      if (t) { setField(campo, t); showToast("✓ Escrita melhorada!"); }
+      else throw new Error();
+    } catch { showToast("Erro ao melhorar. Tente novamente."); }
+    setLoading(false);
   };
 
   const inp = { background:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:"13px 14px", color:C.white, fontSize:15, outline:"none", fontFamily:"inherit", width:"100%", lineHeight:1.5, boxSizing:"border-box" };
@@ -451,101 +440,17 @@ Responsável: ${d.responsavel||"—"}`;
           <div style={fw}>
             <label style={lbl}>Ocorrência</label>
             <textarea value={form.ocorrencia} onChange={e=>setField("ocorrencia",e.target.value)} placeholder="Descreva o que aconteceu..." rows={5} style={{...ta}}/>
-            <button
-              onClick={()=>melhorarCampo("ocorrencia")}
-              disabled={melhorando.ocorrencia}
-              style={{
-                marginTop:8,
-                background:melhorando.ocorrencia?"#3B2F6B":"#5B21B6",
-                border:"none",
-                borderRadius:8,
-                padding:"13px 16px",
-                color:"#fff",
-                fontSize:13,
-                fontWeight:800,
-                cursor:melhorando.ocorrencia?"not-allowed":"pointer",
-                display:"flex",
-                alignItems:"center",
-                justifyContent:"center",
-                gap:8,
-                fontFamily:"inherit",
-                width:"100%",
-                opacity:melhorando.ocorrencia?0.7:1,
-                minHeight:44,
-                overflow:"visible",
-                flexShrink:0,
-              }>
-              {melhorando.ocorrencia
-                ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
-                : <>✨&nbsp;Melhorar escrita com IA</>
-              }
-            </button>
+            <button onClick={()=>melhorar("ocorrencia",setMelhorandoOc)} disabled={melhorandoOc} style={{background:melhorandoOc?"#3730a3":"#4f46e5",border:"none",borderRadius:8,padding:"12px 16px",color:"white",fontSize:13,fontWeight:800,cursor:"pointer",display:"block",width:"100%",marginTop:6}}>{melhorandoOc?"⟳ Melhorando...":"✨ Melhorar escrita com IA"}</button>
           </div>
           <div style={fw}>
             <label style={lbl}>Encaminhamento</label>
             <textarea value={form.encaminhamento} onChange={e=>setField("encaminhamento",e.target.value)} placeholder="Medidas tomadas, acionamentos..." rows={4} style={{...ta}}/>
-            <button
-              onClick={()=>melhorarCampo("encaminhamento")}
-              disabled={melhorando.encaminhamento}
-              style={{
-                marginTop:8,
-                background:melhorando.encaminhamento?"#3B2F6B":"#5B21B6",
-                border:"none",
-                borderRadius:8,
-                padding:"13px 16px",
-                color:"#fff",
-                fontSize:13,
-                fontWeight:800,
-                cursor:melhorando.encaminhamento?"not-allowed":"pointer",
-                display:"flex",
-                alignItems:"center",
-                justifyContent:"center",
-                gap:8,
-                fontFamily:"inherit",
-                width:"100%",
-                opacity:melhorando.encaminhamento?0.7:1,
-                minHeight:44,
-                overflow:"visible",
-                flexShrink:0,
-              }>
-              {melhorando.encaminhamento
-                ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
-                : <>✨&nbsp;Melhorar escrita com IA</>
-              }
-            </button>
+            <button onClick={()=>melhorar("encaminhamento",setMelhorandoEn)} disabled={melhorandoEn} style={{background:melhorandoEn?"#3730a3":"#4f46e5",border:"none",borderRadius:8,padding:"12px 16px",color:"white",fontSize:13,fontWeight:800,cursor:"pointer",display:"block",width:"100%",marginTop:6}}>{melhorandoEn?"⟳ Melhorando...":"✨ Melhorar escrita com IA"}</button>
           </div>
           <div style={fw}>
             <label style={lbl}>Situação final</label>
             <textarea value={form.situacaoFinal} onChange={e=>setField("situacaoFinal",e.target.value)} placeholder="Como foi encerrada..." rows={3} style={{...ta}}/>
-            <button
-              onClick={()=>melhorarCampo("situacaoFinal")}
-              disabled={melhorando.situacaoFinal}
-              style={{
-                marginTop:8,
-                background:melhorando.situacaoFinal?"#3B2F6B":"#5B21B6",
-                border:"none",
-                borderRadius:8,
-                padding:"13px 16px",
-                color:"#fff",
-                fontSize:13,
-                fontWeight:800,
-                cursor:melhorando.situacaoFinal?"not-allowed":"pointer",
-                display:"flex",
-                alignItems:"center",
-                justifyContent:"center",
-                gap:8,
-                fontFamily:"inherit",
-                width:"100%",
-                opacity:melhorando.situacaoFinal?0.7:1,
-                minHeight:44,
-                overflow:"visible",
-                flexShrink:0,
-              }>
-              {melhorando.situacaoFinal
-                ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
-                : <>✨&nbsp;Melhorar escrita com IA</>
-              }
-            </button>
+            <button onClick={()=>melhorar("situacaoFinal",setMelhorandoSf)} disabled={melhorandoSf} style={{background:melhorandoSf?"#3730a3":"#4f46e5",border:"none",borderRadius:8,padding:"12px 16px",color:"white",fontSize:13,fontWeight:800,cursor:"pointer",display:"block",width:"100%",marginTop:6}}>{melhorandoSf?"⟳ Melhorando...":"✨ Melhorar escrita com IA"}</button>
           </div>
           <SectionLabel>✍️ Encerramento</SectionLabel>
           <div style={fw}><label style={lbl}>Testemunha</label><input value={form.testemunha} onChange={e=>setField("testemunha",e.target.value)} placeholder="Nome da testemunha" style={inp}/></div>
