@@ -393,15 +393,12 @@ Responsável: ${d.responsavel||"—"}`;
           encaminhamento: "Reescreva este encaminhamento de forma mais clara e profissional. Mantenha todas as ações descritas. Retorne APENAS o texto reescrito, sem explicações:",
           situacaoFinal:  "Reescreva esta situação final de forma mais clara e profissional. Mantenha o desfecho. Retorne APENAS o texto reescrito, sem explicações:",
         };
-        const r = await fetch("https://api.anthropic.com/v1/messages", {
+        const r = await fetch("/api/melhorar-campo", {
           method:"POST", headers:{"Content-Type":"application/json"},
-          body:JSON.stringify({
-            model:"claude-haiku-4-5", max_tokens:500,
-            messages:[{role:"user", content:prompts[campo]+"\n\n"+textoAtual}],
-          }),
+          body:JSON.stringify({ campo, texto: textoAtual }),
         });
         const d = await r.json();
-        const t = d.content?.find(b=>b.type==="text")?.text?.trim();
+        const t = d.texto?.trim();
         if (t && t !== textoAtual) {
           setField(campo, t);
           setIaStatus("pronto");
