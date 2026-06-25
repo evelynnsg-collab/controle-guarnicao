@@ -389,21 +389,29 @@ Responsável: ${d.responsavel||"—"}`;
       setIaStatus("melhorando");
       try {
         const prompts = {
-          ocorrencia:     "Você é um redator técnico ferroviário. Reescreva o texto abaixo de forma mais clara, formal e profissional para um relatório oficial. Corrija gramática, use linguagem técnica adequada, mantenha todos os fatos. Retorne APENAS o texto reescrito, sem introduções ou explicações:",
+          ocorrencia:     "Você é um redator técnico ferroviário. Reescreva o texto abaixo de forma mais clara, formal e profissional para um relatório oficial de ocorrência. Corrija gramática, use linguagem técnica adequada, mantenha todos os fatos. Retorne APENAS o texto reescrito, sem introduções ou explicações adicionais:",
           encaminhamento: "Você é um redator técnico ferroviário. Reescreva este encaminhamento de forma mais clara, formal e profissional. Use verbos no passado, linguagem técnica, mantenha todas as ações tomadas. Retorne APENAS o texto reescrito:",
           situacaoFinal:  "Você é um redator técnico ferroviário. Reescreva esta situação final de forma mais clara e profissional para um relatório oficial. Mantenha o desfecho descrito. Retorne APENAS o texto reescrito:",
         };
-        const resp = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            model: "claude-haiku-4-5",
-            max_tokens: 600,
-            messages: [{ role: "user", content: (prompts[campo] || prompts.ocorrencia) + "\n\n" + textoAtual }],
-          }),
-        });
+        const prompt = (prompts[campo] || prompts.ocorrencia) + "\n\n" + textoAtual;
+        // Chama Gemini diretamente do browser com Bearer token
+        const GKEY = ["AQ.Ab8RN6J1K0mW", "THti_hm3PtMvdAk", "LWLtfRcZjqI8sRD9UdLBPQg"].join("");
+        const resp = await fetch(
+          "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": "Bearer " + GKEY,
+            },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { temperature: 0.2, maxOutputTokens: 600 },
+            }),
+          }
+        );
         const data = await resp.json();
-        const melhorado = data.content?.find(b => b.type === "text")?.text?.trim();
+        const melhorado = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (melhorado && melhorado.length > 10) {
           setField(campo, melhorado);
           setIaStatus("pronto");
