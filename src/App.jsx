@@ -419,44 +419,7 @@ Responsável: ${d.responsavel||"—"}`;
   const fw  = { display:"flex", flexDirection:"column", gap:6 };
   const btn = (bg,br,co) => ({ background:bg, border:`1px solid ${br}`, borderRadius:9, padding:"13px 14px", color:co, fontSize:14, fontWeight:800, cursor:"pointer", flex:1 });
 
-  // Componente de textarea com botão IA integrado
-  const TextAreaIA = ({ campo, placeholder, rows }) => (
-    <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
-      <textarea
-        value={form[campo]}
-        onChange={e => setField(campo, e.target.value)}
-        placeholder={placeholder}
-        rows={rows}
-        style={{ ...ta, borderBottomLeftRadius:0, borderBottomRightRadius:0, borderBottom:"none" }}
-      />
-      <button
-        onClick={() => melhorarCampo(campo)}
-        disabled={melhorando[campo]}
-        style={{
-          background: melhorando[campo] ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.14)",
-          border: `1px solid ${melhorando[campo] ? C.border : "rgba(139,92,246,0.5)"}`,
-          borderTop: "none",
-          borderBottomLeftRadius: 8,
-          borderBottomRightRadius: 8,
-          padding: "9px 14px",
-          color: melhorando[campo] ? C.muted : "#A78BFA",
-          fontSize: 12,
-          fontWeight: 800,
-          cursor: melhorando[campo] ? "not-allowed" : "pointer",
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-          letterSpacing: 0.3,
-          transition: "all 0.2s",
-        }}
-      >
-        {melhorando[campo]
-          ? <><span style={{ display:"inline-block", animation:"spin 1s linear infinite" }}>⟳</span> Melhorando com IA...</>
-          : <><span>✨</span> Melhorar escrita com IA</>
-        }
-      </button>
-    </div>
-  );
+
 
   return (
     <div style={{ padding:"16px 16px 0", display:"flex", flexDirection:"column", gap:0 }}>
@@ -487,15 +450,24 @@ Responsável: ${d.responsavel||"—"}`;
           <SectionLabel>📋 Relato</SectionLabel>
           <div style={fw}>
             <label style={lbl}>Ocorrência</label>
-            <TextAreaIA campo="ocorrencia" placeholder="Descreva o que aconteceu..." rows={5}/>
+            <textarea value={form.ocorrencia} onChange={e=>setField("ocorrencia",e.target.value)} placeholder="Descreva o que aconteceu..." rows={5} style={{...ta, borderBottomLeftRadius:0, borderBottomRightRadius:0, borderBottom:"none"}}/>
+            <button onClick={()=>melhorarCampo("ocorrencia")} disabled={melhorando.ocorrencia} style={{ background:melhorando.ocorrencia?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.14)", border:`1px solid ${melhorando.ocorrencia?C.border:"rgba(139,92,246,0.5)"}`, borderTop:"none", borderBottomLeftRadius:8, borderBottomRightRadius:8, padding:"9px 14px", color:melhorando.ocorrencia?C.muted:"#A78BFA", fontSize:12, fontWeight:800, cursor:melhorando.ocorrencia?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:7, fontFamily:"inherit" }}>
+              {melhorando.ocorrencia?<><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span> Melhorando...</>:<><span>✨</span> Melhorar escrita com IA</>}
+            </button>
           </div>
           <div style={fw}>
             <label style={lbl}>Encaminhamento</label>
-            <TextAreaIA campo="encaminhamento" placeholder="Medidas tomadas, acionamentos..." rows={4}/>
+            <textarea value={form.encaminhamento} onChange={e=>setField("encaminhamento",e.target.value)} placeholder="Medidas tomadas, acionamentos..." rows={4} style={{...ta, borderBottomLeftRadius:0, borderBottomRightRadius:0, borderBottom:"none"}}/>
+            <button onClick={()=>melhorarCampo("encaminhamento")} disabled={melhorando.encaminhamento} style={{ background:melhorando.encaminhamento?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.14)", border:`1px solid ${melhorando.encaminhamento?C.border:"rgba(139,92,246,0.5)"}`, borderTop:"none", borderBottomLeftRadius:8, borderBottomRightRadius:8, padding:"9px 14px", color:melhorando.encaminhamento?C.muted:"#A78BFA", fontSize:12, fontWeight:800, cursor:melhorando.encaminhamento?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:7, fontFamily:"inherit" }}>
+              {melhorando.encaminhamento?<><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span> Melhorando...</>:<><span>✨</span> Melhorar escrita com IA</>}
+            </button>
           </div>
           <div style={fw}>
             <label style={lbl}>Situação final</label>
-            <TextAreaIA campo="situacaoFinal" placeholder="Como foi encerrada..." rows={3}/>
+            <textarea value={form.situacaoFinal} onChange={e=>setField("situacaoFinal",e.target.value)} placeholder="Como foi encerrada..." rows={3} style={{...ta, borderBottomLeftRadius:0, borderBottomRightRadius:0, borderBottom:"none"}}/>
+            <button onClick={()=>melhorarCampo("situacaoFinal")} disabled={melhorando.situacaoFinal} style={{ background:melhorando.situacaoFinal?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.14)", border:`1px solid ${melhorando.situacaoFinal?C.border:"rgba(139,92,246,0.5)"}`, borderTop:"none", borderBottomLeftRadius:8, borderBottomRightRadius:8, padding:"9px 14px", color:melhorando.situacaoFinal?C.muted:"#A78BFA", fontSize:12, fontWeight:800, cursor:melhorando.situacaoFinal?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:7, fontFamily:"inherit" }}>
+              {melhorando.situacaoFinal?<><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span> Melhorando...</>:<><span>✨</span> Melhorar escrita com IA</>}
+            </button>
           </div>
           <SectionLabel>✍️ Encerramento</SectionLabel>
           <div style={fw}><label style={lbl}>Testemunha</label><input value={form.testemunha} onChange={e=>setField("testemunha",e.target.value)} placeholder="Nome da testemunha" style={inp}/></div>
