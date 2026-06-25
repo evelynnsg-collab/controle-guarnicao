@@ -333,7 +333,7 @@ function RadioTab({ userName }) {
   );
 }
 
-// ─── ABA OCORRÊNCIA ───────────────────────────────────────────────────────────
+// ─── ABA OCORRÊNCIA v3 ─────────────────────────────────────────────────────────
 function OcorrenciaTab({ userName }) {
   const today = new Date().toLocaleDateString("pt-BR");
   const empty = { data:today, horaInicio:"", horaFim:"", local:"", passageiro:"", cpf:"", endereco:"", telefone:"", ocorrencia:"", encaminhamento:"", testemunha:"", situacaoFinal:"", responsavel:userName||"" };
@@ -472,7 +472,9 @@ Responsável: ${d.responsavel||"—"}`;
                 width:"100%",
                 opacity:melhorando.ocorrencia?0.7:1,
                 minHeight:44,
-              }}>
+                overflow:"visible",
+                flexShrink:0,
+              }>
               {melhorando.ocorrencia
                 ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
                 : <>✨&nbsp;Melhorar escrita com IA</>
@@ -503,7 +505,9 @@ Responsável: ${d.responsavel||"—"}`;
                 width:"100%",
                 opacity:melhorando.encaminhamento?0.7:1,
                 minHeight:44,
-              }}>
+                overflow:"visible",
+                flexShrink:0,
+              }>
               {melhorando.encaminhamento
                 ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
                 : <>✨&nbsp;Melhorar escrita com IA</>
@@ -534,7 +538,9 @@ Responsável: ${d.responsavel||"—"}`;
                 width:"100%",
                 opacity:melhorando.situacaoFinal?0.7:1,
                 minHeight:44,
-              }}>
+                overflow:"visible",
+                flexShrink:0,
+              }>
               {melhorando.situacaoFinal
                 ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
                 : <>✨&nbsp;Melhorar escrita com IA</>
