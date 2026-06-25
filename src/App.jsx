@@ -337,27 +337,126 @@ function RadioTab({ userName }) {
 function OcorrenciaTab({ userName }) {
   const today = new Date().toLocaleDateString("pt-BR");
   const empty = { data:today, horaInicio:"", horaFim:"", local:"", passageiro:"", cpf:"", endereco:"", telefone:"", ocorrencia:"", encaminhamento:"", testemunha:"", situacaoFinal:"", responsavel:userName||"" };
-  const [form, setForm] = useState(empty);
-  const [preview, setPreview] = useState("");
-  const [toast, setToast] = useState("");
-  const [saved, setSaved] = useState(() => { try { return JSON.parse(localStorage.getItem("gn_ocorrencias"))||[]; } catch { return []; } });
-  const [view, setView] = useState("form");
+  const [form, setForm]         = useState(empty);
+  const [preview, setPreview]   = useState("");
+  const [toast, setToast]       = useState("");
+  const [saved, setSaved]       = useState(() => { try { return JSON.parse(localStorage.getItem("gn_ocorrencias"))||[]; } catch { return []; } });
+  const [view, setView]         = useState("form");
+  const [melhorando, setMelhorando] = useState({}); // { ocorrencia: bool, encaminhamento: bool, situacaoFinal: bool }
 
   const setField = (key, val) => setForm(p => ({...p,[key]:val}));
-  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),2500); };
+  const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),3000); };
 
-  const buildText = (d) => `REGISTRO DE OCORRÊNCIA\n\nData: ${d.data||"—"}\nHorário início: ${d.horaInicio||"—"}\nHorário término: ${d.horaFim||"—"}\nLocal: ${d.local||"—"}\n\nPassageiro(a): ${d.passageiro||"—"}\nCPF: ${d.cpf||"—"}\nEndereço: ${d.endereco||"—"}\nTelefone: ${d.telefone||"—"}\n\nOcorrência: ${d.ocorrencia||"—"}\n\nEncaminhamento: ${d.encaminhamento||"—"}\n\nTestemunha: ${d.testemunha||"—"}\n\nSituação final: ${d.situacaoFinal||"—"}\n\nResponsável: ${d.responsavel||"—"}`;
+  const buildText = (d) => `REGISTRO DE OCORRÊNCIA
+
+Data: ${d.data||"—"}
+Horário início: ${d.horaInicio||"—"}
+Horário término: ${d.horaFim||"—"}
+Local: ${d.local||"—"}
+
+Passageiro(a): ${d.passageiro||"—"}
+CPF: ${d.cpf||"—"}
+Endereço: ${d.endereco||"—"}
+Telefone: ${d.telefone||"—"}
+
+Ocorrência: ${d.ocorrencia||"—"}
+
+Encaminhamento: ${d.encaminhamento||"—"}
+
+Testemunha: ${d.testemunha||"—"}
+
+Situação final: ${d.situacaoFinal||"—"}
+
+Responsável: ${d.responsavel||"—"}`;
   const handleFinalizar = () => { setPreview(buildText(form)); setView("preview"); };
-  const handleCopiar = () => { navigator.clipboard.writeText(preview).then(()=>showToast("✓ Copiado!")); };
-  const handleWhatsApp = () => { window.open(`https://wa.me/${WHATSAPP_GROUP}?text=${encodeURIComponent(preview)}`,"_blank"); };
-  const handleSalvar = () => { const e={...form,id:Date.now(),texto:preview||buildText(form)}; const u=[e,...saved].slice(0,50); setSaved(u); localStorage.setItem("gn_ocorrencias",JSON.stringify(u)); showToast("✓ Salvo!"); };
-  const handleLimpar = () => { setForm({...empty,data:today,responsavel:userName||""}); setPreview(""); setView("form"); showToast("Formulário limpo."); };
+  const handleCopiar    = () => { navigator.clipboard.writeText(preview).then(()=>showToast("✓ Copiado!")); };
+  const handleWhatsApp  = () => { window.open(`https://wa.me/${WHATSAPP_GROUP}?text=${encodeURIComponent(preview)}`,"_blank"); };
+  const handleSalvar    = () => { const e={...form,id:Date.now(),texto:preview||buildText(form)}; const u=[e,...saved].slice(0,50); setSaved(u); localStorage.setItem("gn_ocorrencias",JSON.stringify(u)); showToast("✓ Salvo!"); };
+  const handleLimpar    = () => { setForm({...empty,data:today,responsavel:userName||""}); setPreview(""); setView("form"); showToast("Formulário limpo."); };
+
+  // ✨ Melhora um campo específico usando Claude API
+  const melhorarCampo = async (campo) => {
+    const texto = form[campo];
+    if (!texto || !texto.trim()) { showToast("Preencha o campo antes de melhorar."); return; }
+    setMelhorando(p => ({...p, [campo]:true}));
+    try {
+      const prompts = {
+        ocorrencia:     "Você é um assistente de escrita para relatórios operacionais ferroviários. Reescreva o seguinte relato de ocorrência de forma mais clara, objetiva e profissional, usando linguagem formal adequada para documentação oficial. Mantenha todos os fatos. Retorne APENAS o texto reescrito, sem comentários:",
+        encaminhamento: "Você é um assistente de escrita para relatórios operacionais ferroviários. Reescreva o seguinte encaminhamento de forma mais clara, objetiva e profissional, usando linguagem formal. Mantenha todas as ações descritas. Retorne APENAS o texto reescrito, sem comentários:",
+        situacaoFinal:  "Você é um assistente de escrita para relatórios operacionais ferroviários. Reescreva a seguinte situação final de forma mais clara, objetiva e profissional, usando linguagem formal. Mantenha o desfecho descrito. Retorne APENAS o texto reescrito, sem comentários:",
+      };
+
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-haiku-4-5",
+          max_tokens: 500,
+          messages: [{ role:"user", content: prompts[campo] + "
+
+" + texto }],
+        }),
+      });
+
+      if (!resp.ok) throw new Error("API error " + resp.status);
+      const data = await resp.json();
+      const melhorado = data.content?.find(b => b.type === "text")?.text?.trim();
+      if (melhorado) {
+        setField(campo, melhorado);
+        showToast("✓ Escrita melhorada!");
+      } else {
+        throw new Error("Resposta vazia");
+      }
+    } catch(e) {
+      showToast("Erro ao melhorar. Tente novamente.");
+    }
+    setMelhorando(p => ({...p, [campo]:false}));
+  };
 
   const inp = { background:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:"13px 14px", color:C.white, fontSize:15, outline:"none", fontFamily:"inherit", width:"100%", lineHeight:1.5, boxSizing:"border-box" };
-  const ta = {...inp, resize:"vertical"};
+  const ta  = {...inp, resize:"vertical"};
   const lbl = { color:C.text, fontSize:11, fontWeight:700, textTransform:"uppercase", letterSpacing:0.8 };
-  const fw = { display:"flex", flexDirection:"column", gap:6 };
+  const fw  = { display:"flex", flexDirection:"column", gap:6 };
   const btn = (bg,br,co) => ({ background:bg, border:`1px solid ${br}`, borderRadius:9, padding:"13px 14px", color:co, fontSize:14, fontWeight:800, cursor:"pointer", flex:1 });
+
+  // Componente de textarea com botão IA integrado
+  const TextAreaIA = ({ campo, placeholder, rows }) => (
+    <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
+      <textarea
+        value={form[campo]}
+        onChange={e => setField(campo, e.target.value)}
+        placeholder={placeholder}
+        rows={rows}
+        style={{ ...ta, borderBottomLeftRadius:0, borderBottomRightRadius:0, borderBottom:"none" }}
+      />
+      <button
+        onClick={() => melhorarCampo(campo)}
+        disabled={melhorando[campo]}
+        style={{
+          background: melhorando[campo] ? "rgba(139,92,246,0.08)" : "rgba(139,92,246,0.14)",
+          border: `1px solid ${melhorando[campo] ? C.border : "rgba(139,92,246,0.5)"}`,
+          borderTop: "none",
+          borderBottomLeftRadius: 8,
+          borderBottomRightRadius: 8,
+          padding: "9px 14px",
+          color: melhorando[campo] ? C.muted : "#A78BFA",
+          fontSize: 12,
+          fontWeight: 800,
+          cursor: melhorando[campo] ? "not-allowed" : "pointer",
+          display: "flex",
+          alignItems: "center",
+          gap: 7,
+          letterSpacing: 0.3,
+          transition: "all 0.2s",
+        }}
+      >
+        {melhorando[campo]
+          ? <><span style={{ display:"inline-block", animation:"spin 1s linear infinite" }}>⟳</span> Melhorando com IA...</>
+          : <><span>✨</span> Melhorar escrita com IA</>
+        }
+      </button>
+    </div>
+  );
 
   return (
     <div style={{ padding:"16px 16px 0", display:"flex", flexDirection:"column", gap:0 }}>
@@ -386,9 +485,18 @@ function OcorrenciaTab({ userName }) {
           <div style={fw}><label style={lbl}>Endereço</label><input value={form.endereco} onChange={e=>setField("endereco",e.target.value)} placeholder="Rua, número, bairro" style={inp}/></div>
           <div style={fw}><label style={lbl}>Telefone</label><input value={form.telefone} onChange={e=>setField("telefone",e.target.value)} placeholder="(11) 9 0000-0000" style={inp}/></div>
           <SectionLabel>📋 Relato</SectionLabel>
-          <div style={fw}><label style={lbl}>Ocorrência</label><textarea value={form.ocorrencia} onChange={e=>setField("ocorrencia",e.target.value)} placeholder="Descreva o que aconteceu..." rows={5} style={ta}/></div>
-          <div style={fw}><label style={lbl}>Encaminhamento</label><textarea value={form.encaminhamento} onChange={e=>setField("encaminhamento",e.target.value)} placeholder="Medidas tomadas..." rows={4} style={ta}/></div>
-          <div style={fw}><label style={lbl}>Situação final</label><textarea value={form.situacaoFinal} onChange={e=>setField("situacaoFinal",e.target.value)} placeholder="Como foi encerrada..." rows={3} style={ta}/></div>
+          <div style={fw}>
+            <label style={lbl}>Ocorrência</label>
+            <TextAreaIA campo="ocorrencia" placeholder="Descreva o que aconteceu..." rows={5}/>
+          </div>
+          <div style={fw}>
+            <label style={lbl}>Encaminhamento</label>
+            <TextAreaIA campo="encaminhamento" placeholder="Medidas tomadas, acionamentos..." rows={4}/>
+          </div>
+          <div style={fw}>
+            <label style={lbl}>Situação final</label>
+            <TextAreaIA campo="situacaoFinal" placeholder="Como foi encerrada..." rows={3}/>
+          </div>
           <SectionLabel>✍️ Encerramento</SectionLabel>
           <div style={fw}><label style={lbl}>Testemunha</label><input value={form.testemunha} onChange={e=>setField("testemunha",e.target.value)} placeholder="Nome da testemunha" style={inp}/></div>
           <div style={fw}><label style={lbl}>Responsável</label><input value={form.responsavel} onChange={e=>setField("responsavel",e.target.value)} placeholder="Seu nome" style={inp}/></div>
