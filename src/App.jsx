@@ -450,23 +450,92 @@ Responsável: ${d.responsavel||"—"}`;
           <SectionLabel>📋 Relato</SectionLabel>
           <div style={fw}>
             <label style={lbl}>Ocorrência</label>
-            <textarea value={form.ocorrencia} onChange={e=>setField("ocorrencia",e.target.value)} placeholder="Descreva o que aconteceu..." rows={5} style={{...ta, borderBottomLeftRadius:0, borderBottomRightRadius:0, borderBottom:"none"}}/>
-            <button onClick={()=>melhorarCampo("ocorrencia")} disabled={melhorando.ocorrencia} style={{ background:melhorando.ocorrencia?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.14)", border:`1px solid ${melhorando.ocorrencia?C.border:"rgba(139,92,246,0.5)"}`, borderTop:"none", borderBottomLeftRadius:8, borderBottomRightRadius:8, padding:"9px 14px", color:melhorando.ocorrencia?C.muted:"#A78BFA", fontSize:12, fontWeight:800, cursor:melhorando.ocorrencia?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:7, fontFamily:"inherit" }}>
-              {melhorando.ocorrencia?<><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span> Melhorando...</>:<><span>✨</span> Melhorar escrita com IA</>}
+            <textarea value={form.ocorrencia} onChange={e=>setField("ocorrencia",e.target.value)} placeholder="Descreva o que aconteceu..." rows={5} style={{...ta}}/>
+            <button
+              onClick={()=>melhorarCampo("ocorrencia")}
+              disabled={melhorando.ocorrencia}
+              style={{
+                marginTop:6,
+                background:melhorando.ocorrencia?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.18)",
+                border:"1px solid rgba(139,92,246,0.6)",
+                borderRadius:8,
+                padding:"11px 14px",
+                color:melhorando.ocorrencia?C.muted:"#C4B5FD",
+                fontSize:13,
+                fontWeight:800,
+                cursor:melhorando.ocorrencia?"not-allowed":"pointer",
+                display:"flex",
+                alignItems:"center",
+                justifyContent:"center",
+                gap:8,
+                fontFamily:"inherit",
+                width:"100%",
+                letterSpacing:0.3,
+              }}>
+              {melhorando.ocorrencia
+                ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
+                : <>✨&nbsp;Melhorar escrita com IA</>
+              }
             </button>
           </div>
           <div style={fw}>
             <label style={lbl}>Encaminhamento</label>
-            <textarea value={form.encaminhamento} onChange={e=>setField("encaminhamento",e.target.value)} placeholder="Medidas tomadas, acionamentos..." rows={4} style={{...ta, borderBottomLeftRadius:0, borderBottomRightRadius:0, borderBottom:"none"}}/>
-            <button onClick={()=>melhorarCampo("encaminhamento")} disabled={melhorando.encaminhamento} style={{ background:melhorando.encaminhamento?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.14)", border:`1px solid ${melhorando.encaminhamento?C.border:"rgba(139,92,246,0.5)"}`, borderTop:"none", borderBottomLeftRadius:8, borderBottomRightRadius:8, padding:"9px 14px", color:melhorando.encaminhamento?C.muted:"#A78BFA", fontSize:12, fontWeight:800, cursor:melhorando.encaminhamento?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:7, fontFamily:"inherit" }}>
-              {melhorando.encaminhamento?<><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span> Melhorando...</>:<><span>✨</span> Melhorar escrita com IA</>}
+            <textarea value={form.encaminhamento} onChange={e=>setField("encaminhamento",e.target.value)} placeholder="Medidas tomadas, acionamentos..." rows={4} style={{...ta}}/>
+            <button
+              onClick={()=>melhorarCampo("encaminhamento")}
+              disabled={melhorando.encaminhamento}
+              style={{
+                marginTop:6,
+                background:melhorando.encaminhamento?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.18)",
+                border:"1px solid rgba(139,92,246,0.6)",
+                borderRadius:8,
+                padding:"11px 14px",
+                color:melhorando.encaminhamento?C.muted:"#C4B5FD",
+                fontSize:13,
+                fontWeight:800,
+                cursor:melhorando.encaminhamento?"not-allowed":"pointer",
+                display:"flex",
+                alignItems:"center",
+                justifyContent:"center",
+                gap:8,
+                fontFamily:"inherit",
+                width:"100%",
+                letterSpacing:0.3,
+              }}>
+              {melhorando.encaminhamento
+                ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
+                : <>✨&nbsp;Melhorar escrita com IA</>
+              }
             </button>
           </div>
           <div style={fw}>
             <label style={lbl}>Situação final</label>
-            <textarea value={form.situacaoFinal} onChange={e=>setField("situacaoFinal",e.target.value)} placeholder="Como foi encerrada..." rows={3} style={{...ta, borderBottomLeftRadius:0, borderBottomRightRadius:0, borderBottom:"none"}}/>
-            <button onClick={()=>melhorarCampo("situacaoFinal")} disabled={melhorando.situacaoFinal} style={{ background:melhorando.situacaoFinal?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.14)", border:`1px solid ${melhorando.situacaoFinal?C.border:"rgba(139,92,246,0.5)"}`, borderTop:"none", borderBottomLeftRadius:8, borderBottomRightRadius:8, padding:"9px 14px", color:melhorando.situacaoFinal?C.muted:"#A78BFA", fontSize:12, fontWeight:800, cursor:melhorando.situacaoFinal?"not-allowed":"pointer", display:"flex", alignItems:"center", gap:7, fontFamily:"inherit" }}>
-              {melhorando.situacaoFinal?<><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span> Melhorando...</>:<><span>✨</span> Melhorar escrita com IA</>}
+            <textarea value={form.situacaoFinal} onChange={e=>setField("situacaoFinal",e.target.value)} placeholder="Como foi encerrada..." rows={3} style={{...ta}}/>
+            <button
+              onClick={()=>melhorarCampo("situacaoFinal")}
+              disabled={melhorando.situacaoFinal}
+              style={{
+                marginTop:6,
+                background:melhorando.situacaoFinal?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.18)",
+                border:"1px solid rgba(139,92,246,0.6)",
+                borderRadius:8,
+                padding:"11px 14px",
+                color:melhorando.situacaoFinal?C.muted:"#C4B5FD",
+                fontSize:13,
+                fontWeight:800,
+                cursor:melhorando.situacaoFinal?"not-allowed":"pointer",
+                display:"flex",
+                alignItems:"center",
+                justifyContent:"center",
+                gap:8,
+                fontFamily:"inherit",
+                width:"100%",
+                letterSpacing:0.3,
+              }}>
+              {melhorando.situacaoFinal
+                ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
+                : <>✨&nbsp;Melhorar escrita com IA</>
+              }
             </button>
           </div>
           <SectionLabel>✍️ Encerramento</SectionLabel>
