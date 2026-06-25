@@ -333,18 +333,21 @@ function RadioTab({ userName }) {
   );
 }
 
-// ─── ABA OCORRÊNCIA v3 ─────────────────────────────────────────────────────────
+// ─── ABA OCORRÊNCIA ──────────────────────────────────────────────────────────
 function OcorrenciaTab({ userName }) {
   const today = new Date().toLocaleDateString("pt-BR");
   const empty = { data:today, horaInicio:"", horaFim:"", local:"", passageiro:"", cpf:"", endereco:"", telefone:"", ocorrencia:"", encaminhamento:"", testemunha:"", situacaoFinal:"", responsavel:userName||"" };
-  const [form, setForm]         = useState(empty);
-  const [preview, setPreview]   = useState("");
-  const [toast, setToast]       = useState("");
-  const [saved, setSaved]       = useState(() => { try { return JSON.parse(localStorage.getItem("gn_ocorrencias"))||[]; } catch { return []; } });
-  const [view, setView]         = useState("form");
-  const [melhorandoOc, setMelhorandoOc] = useState(false);
-  const [melhorandoEn, setMelhorandoEn] = useState(false);
-  const [melhorandoSf, setMelhorandoSf] = useState(false);
+  const [form, setForm]       = useState(empty);
+  const [preview, setPreview] = useState("");
+  const [toast, setToast]     = useState("");
+  const [saved, setSaved]     = useState(() => { try { return JSON.parse(localStorage.getItem("gn_ocorrencias"))||[]; } catch { return []; } });
+  const [view, setView]       = useState("form");
+  const [iaStatus, setIaStatus] = useState(""); // "", "melhorando", "pronto"
+  const timersRef = useRef({});
+  const formRef   = useRef(form);
+
+  // Mantém ref sincronizada com form para usar nos timers
+  useEffect(() => { formRef.current = form; }, [form]);
 
   const setField = (key, val) => setForm(p => ({...p,[key]:val}));
   const showToast = (msg) => { setToast(msg); setTimeout(()=>setToast(""),3000); };
@@ -376,30 +379,40 @@ Responsável: ${d.responsavel||"—"}`;
   const handleSalvar    = () => { const e={...form,id:Date.now(),texto:preview||buildText(form)}; const u=[e,...saved].slice(0,50); setSaved(u); localStorage.setItem("gn_ocorrencias",JSON.stringify(u)); showToast("✓ Salvo!"); };
   const handleLimpar    = () => { setForm({...empty,data:today,responsavel:userName||""}); setPreview(""); setView("form"); showToast("Formulário limpo."); };
 
-  // ✨ Melhora escrita com IA
-  const melhorar = async (campo, setLoading) => {
-    const texto = form[campo];
-    if (!texto.trim()) { showToast("Preencha o campo antes de melhorar."); return; }
-    setLoading(true);
-    try {
-      const p = {
-        ocorrencia:     "Reescreva este relato de ocorrência ferroviária de forma mais clara e profissional. Mantenha todos os fatos. Retorne APENAS o texto:",
-        encaminhamento: "Reescreva este encaminhamento de forma mais clara e profissional. Mantenha todas as ações. Retorne APENAS o texto:",
-        situacaoFinal:  "Reescreva esta situação final de forma mais clara e profissional. Mantenha o desfecho. Retorne APENAS o texto:",
-      };
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({ model:"claude-haiku-4-5", max_tokens:500,
-          messages:[{role:"user", content:p[campo]+"
+  // ✨ Melhora escrita automaticamente após pausa na digitação
+  const melhorarAuto = (campo, texto) => {
+    if (!texto || texto.trim().length < 15) return; // mínimo 15 chars
+    clearTimeout(timersRef.current[campo]);
+    timersRef.current[campo] = setTimeout(async () => {
+      const textoAtual = formRef.current[campo];
+      if (!textoAtual || textoAtual.trim().length < 15) return;
+      setIaStatus("melhorando");
+      try {
+        const prompts = {
+          ocorrencia:     "Reescreva este relato de ocorrência ferroviária de forma mais clara e profissional. Mantenha todos os fatos. Retorne APENAS o texto reescrito, sem explicações:",
+          encaminhamento: "Reescreva este encaminhamento de forma mais clara e profissional. Mantenha todas as ações descritas. Retorne APENAS o texto reescrito, sem explicações:",
+          situacaoFinal:  "Reescreva esta situação final de forma mais clara e profissional. Mantenha o desfecho. Retorne APENAS o texto reescrito, sem explicações:",
+        };
+        const r = await fetch("https://api.anthropic.com/v1/messages", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({
+            model:"claude-haiku-4-5", max_tokens:500,
+            messages:[{role:"user", content:prompts[campo]+"
 
-"+texto}] }),
-      });
-      const d = await r.json();
-      const t = d.content?.find(b=>b.type==="text")?.text?.trim();
-      if (t) { setField(campo, t); showToast("✓ Escrita melhorada!"); }
-      else throw new Error();
-    } catch { showToast("Erro ao melhorar. Tente novamente."); }
-    setLoading(false);
+"+textoAtual}],
+          }),
+        });
+        const d = await r.json();
+        const t = d.content?.find(b=>b.type==="text")?.text?.trim();
+        if (t && t !== textoAtual) {
+          setField(campo, t);
+          setIaStatus("pronto");
+          setTimeout(() => setIaStatus(""), 2000);
+        } else {
+          setIaStatus("");
+        }
+      } catch { setIaStatus(""); }
+    }, 2500); // 2.5 segundos após parar de digitar
   };
 
   const inp = { background:C.card, border:`1px solid ${C.border}`, borderRadius:8, padding:"13px 14px", color:C.white, fontSize:15, outline:"none", fontFamily:"inherit", width:"100%", lineHeight:1.5, boxSizing:"border-box" };
@@ -439,22 +452,45 @@ Responsável: ${d.responsavel||"—"}`;
           <SectionLabel>📋 Relato</SectionLabel>
           <div style={fw}>
             <label style={lbl}>Ocorrência</label>
-            <textarea value={form.ocorrencia} onChange={e=>setField("ocorrencia",e.target.value)} placeholder="Descreva o que aconteceu..." rows={5} style={{...ta}}/>
-            <button onClick={()=>melhorar("ocorrencia",setMelhorandoOc)} disabled={melhorandoOc} style={{background:melhorandoOc?"#3730a3":"#4f46e5",border:"none",borderRadius:8,padding:"12px 16px",color:"white",fontSize:13,fontWeight:800,cursor:"pointer",display:"block",width:"100%",marginTop:6}}>{melhorandoOc?"⟳ Melhorando...":"✨ Melhorar escrita com IA"}</button>
+            <textarea
+              value={form.ocorrencia}
+              onChange={e => { setField("ocorrencia", e.target.value); melhorarAuto("ocorrencia", e.target.value); }}
+              placeholder="Descreva o que aconteceu..."
+              rows={5}
+              style={{...ta}}
+            />
           </div>
           <div style={fw}>
             <label style={lbl}>Encaminhamento</label>
-            <textarea value={form.encaminhamento} onChange={e=>setField("encaminhamento",e.target.value)} placeholder="Medidas tomadas, acionamentos..." rows={4} style={{...ta}}/>
-            <button onClick={()=>melhorar("encaminhamento",setMelhorandoEn)} disabled={melhorandoEn} style={{background:melhorandoEn?"#3730a3":"#4f46e5",border:"none",borderRadius:8,padding:"12px 16px",color:"white",fontSize:13,fontWeight:800,cursor:"pointer",display:"block",width:"100%",marginTop:6}}>{melhorandoEn?"⟳ Melhorando...":"✨ Melhorar escrita com IA"}</button>
+            <textarea
+              value={form.encaminhamento}
+              onChange={e => { setField("encaminhamento", e.target.value); melhorarAuto("encaminhamento", e.target.value); }}
+              placeholder="Medidas tomadas, acionamentos..."
+              rows={4}
+              style={{...ta}}
+            />
           </div>
           <div style={fw}>
             <label style={lbl}>Situação final</label>
-            <textarea value={form.situacaoFinal} onChange={e=>setField("situacaoFinal",e.target.value)} placeholder="Como foi encerrada..." rows={3} style={{...ta}}/>
-            <button onClick={()=>melhorar("situacaoFinal",setMelhorandoSf)} disabled={melhorandoSf} style={{background:melhorandoSf?"#3730a3":"#4f46e5",border:"none",borderRadius:8,padding:"12px 16px",color:"white",fontSize:13,fontWeight:800,cursor:"pointer",display:"block",width:"100%",marginTop:6}}>{melhorandoSf?"⟳ Melhorando...":"✨ Melhorar escrita com IA"}</button>
+            <textarea
+              value={form.situacaoFinal}
+              onChange={e => { setField("situacaoFinal", e.target.value); melhorarAuto("situacaoFinal", e.target.value); }}
+              placeholder="Como foi encerrada..."
+              rows={3}
+              style={{...ta}}
+            />
           </div>
           <SectionLabel>✍️ Encerramento</SectionLabel>
           <div style={fw}><label style={lbl}>Testemunha</label><input value={form.testemunha} onChange={e=>setField("testemunha",e.target.value)} placeholder="Nome da testemunha" style={inp}/></div>
           <div style={fw}><label style={lbl}>Responsável</label><input value={form.responsavel} onChange={e=>setField("responsavel",e.target.value)} placeholder="Seu nome" style={inp}/></div>
+          {iaStatus && (
+            <div style={{ display:"flex", alignItems:"center", gap:8, padding:"10px 14px", background:"rgba(99,102,241,0.12)", border:"1px solid rgba(99,102,241,0.4)", borderRadius:8, color:"#a5b4fc", fontSize:13, fontWeight:700 }}>
+              {iaStatus === "melhorando"
+                ? <><span style={{display:"inline-block", animation:"spin 1s linear infinite"}}>⟳</span> IA melhorando a escrita...</>
+                : <><span>✅</span> Escrita melhorada pela IA</>
+              }
+            </div>
+          )}
           <div style={{ display:"flex", gap:10 }}>
             <button onClick={handleSalvar} style={btn("rgba(34,197,94,0.12)","rgba(34,197,94,0.4)",C.green)}>💾 Salvar</button>
             <button onClick={handleLimpar} style={btn("rgba(239,68,68,0.1)","rgba(239,68,68,0.3)",C.red)}>🗑 Limpar</button>
