@@ -397,9 +397,7 @@ Responsável: ${d.responsavel||"—"}`;
           method:"POST", headers:{"Content-Type":"application/json"},
           body:JSON.stringify({
             model:"claude-haiku-4-5", max_tokens:500,
-            messages:[{role:"user", content:prompts[campo]+"
-
-"+textoAtual}],
+            messages:[{role:"user", content:prompts[campo]+"\n\n"+textoAtual}],
           }),
         });
         const d = await r.json();
