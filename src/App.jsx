@@ -455,12 +455,12 @@ Responsável: ${d.responsavel||"—"}`;
               onClick={()=>melhorarCampo("ocorrencia")}
               disabled={melhorando.ocorrencia}
               style={{
-                marginTop:6,
-                background:melhorando.ocorrencia?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.18)",
-                border:"1px solid rgba(139,92,246,0.6)",
+                marginTop:8,
+                background:melhorando.ocorrencia?"#3B2F6B":"#5B21B6",
+                border:"none",
                 borderRadius:8,
-                padding:"11px 14px",
-                color:melhorando.ocorrencia?C.muted:"#C4B5FD",
+                padding:"13px 16px",
+                color:"#fff",
                 fontSize:13,
                 fontWeight:800,
                 cursor:melhorando.ocorrencia?"not-allowed":"pointer",
@@ -470,7 +470,8 @@ Responsável: ${d.responsavel||"—"}`;
                 gap:8,
                 fontFamily:"inherit",
                 width:"100%",
-                letterSpacing:0.3,
+                opacity:melhorando.ocorrencia?0.7:1,
+                minHeight:44,
               }}>
               {melhorando.ocorrencia
                 ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
@@ -485,12 +486,12 @@ Responsável: ${d.responsavel||"—"}`;
               onClick={()=>melhorarCampo("encaminhamento")}
               disabled={melhorando.encaminhamento}
               style={{
-                marginTop:6,
-                background:melhorando.encaminhamento?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.18)",
-                border:"1px solid rgba(139,92,246,0.6)",
+                marginTop:8,
+                background:melhorando.encaminhamento?"#3B2F6B":"#5B21B6",
+                border:"none",
                 borderRadius:8,
-                padding:"11px 14px",
-                color:melhorando.encaminhamento?C.muted:"#C4B5FD",
+                padding:"13px 16px",
+                color:"#fff",
                 fontSize:13,
                 fontWeight:800,
                 cursor:melhorando.encaminhamento?"not-allowed":"pointer",
@@ -500,7 +501,8 @@ Responsável: ${d.responsavel||"—"}`;
                 gap:8,
                 fontFamily:"inherit",
                 width:"100%",
-                letterSpacing:0.3,
+                opacity:melhorando.encaminhamento?0.7:1,
+                minHeight:44,
               }}>
               {melhorando.encaminhamento
                 ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
@@ -515,12 +517,12 @@ Responsável: ${d.responsavel||"—"}`;
               onClick={()=>melhorarCampo("situacaoFinal")}
               disabled={melhorando.situacaoFinal}
               style={{
-                marginTop:6,
-                background:melhorando.situacaoFinal?"rgba(139,92,246,0.06)":"rgba(139,92,246,0.18)",
-                border:"1px solid rgba(139,92,246,0.6)",
+                marginTop:8,
+                background:melhorando.situacaoFinal?"#3B2F6B":"#5B21B6",
+                border:"none",
                 borderRadius:8,
-                padding:"11px 14px",
-                color:melhorando.situacaoFinal?C.muted:"#C4B5FD",
+                padding:"13px 16px",
+                color:"#fff",
                 fontSize:13,
                 fontWeight:800,
                 cursor:melhorando.situacaoFinal?"not-allowed":"pointer",
@@ -530,7 +532,8 @@ Responsável: ${d.responsavel||"—"}`;
                 gap:8,
                 fontFamily:"inherit",
                 width:"100%",
-                letterSpacing:0.3,
+                opacity:melhorando.situacaoFinal?0.7:1,
+                minHeight:44,
               }}>
               {melhorando.situacaoFinal
                 ? <><span style={{display:"inline-block",animation:"spin 1s linear infinite"}}>⟳</span>&nbsp;Melhorando com IA...</>
