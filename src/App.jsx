@@ -1000,6 +1000,31 @@ function Dashboard({ user, roster, onToggle, onChangePlatform, onLogout, connect
   const myPlat = PLATFORMS.find(p=>p.id===me.platformId);
   const total = roster.length, atPost = roster.filter(u=>u.atPost).length, absent = total-atPost;
   const byPlat = id => roster.filter(u=>u.platformId===id);
+  const [postoAtual, setPostoAtual] = useState(() => localStorage.getItem("gn_posto_atual") || "");
+  const [intervalo, setIntervalo]   = useState(() => localStorage.getItem("gn_intervalo") || "");
+  const [toastG, setToastG]         = useState("");
+  const showToastG = (msg) => { setToastG(msg); setTimeout(()=>setToastG(""),2500); };
+
+  const selecionarPosto = (posto) => {
+    const novo = postoAtual === posto ? "" : posto;
+    setPostoAtual(novo);
+    localStorage.setItem("gn_posto_atual", novo);
+    if (novo) showToastG("Posto: " + novo);
+  };
+
+  const selecionarIntervalo = (tipo) => {
+    const novo = intervalo === tipo ? "" : tipo;
+    setIntervalo(novo);
+    localStorage.setItem("gn_intervalo", novo);
+    if (_db) {
+      if (novo) {
+        _db.ref("guarnicao/intervalos/" + me.name.replace(/[.#$[\]/]/g,"_")).set({ name: me.name, tipo: novo, ts: Date.now() });
+      } else {
+        _db.ref("guarnicao/intervalos/" + me.name.replace(/[.#$[\]/]/g,"_")).remove();
+      }
+    }
+    showToastG(novo ? "Em " + novo : "Intervalo encerrado");
+  };
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, fontFamily:"'Inter', system-ui, sans-serif", paddingBottom:72 }}>
@@ -1057,6 +1082,65 @@ function Dashboard({ user, roster, onToggle, onChangePlatform, onLogout, connect
           <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
             {PLATFORMS.map(p => <PlatformSquare key={p.id} platform={p} agents={byPlat(p.id)} isMyPlatform={me.platformId===p.id} onSelect={()=>onChangePlatform(me.name,p.id)}/>)}
           </div>
+
+          {/* BOTÕES DE POSTO */}
+          <div style={{ display:"flex", alignItems:"center", gap:10, margin:"4px 0 2px" }}>
+            <div style={{ height:1, flex:1, background:C.border }}/><span style={{ color:C.muted, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:1.2 }}>Meu posto</span><div style={{ height:1, flex:1, background:C.border }}/>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+            {[
+              { label:"SSO",             icon:"🔒", color:"#6366F1" },
+              { label:"Linha de bloqueio", icon:"🚧", color:"#F59E0B" },
+              { label:"Mezanino",          icon:"🏛", color:"#0D9B52" },
+            ].map(p => (
+              <button key={p.label} onClick={()=>selecionarPosto(p.label)}
+                style={{
+                  background: postoAtual===p.label ? p.color+"33" : C.card,
+                  border: `2px solid ${postoAtual===p.label ? p.color : C.border}`,
+                  borderRadius:10, padding:"14px 8px",
+                  color: postoAtual===p.label ? p.color : C.muted,
+                  fontSize:11, fontWeight:800, cursor:"pointer",
+                  display:"flex", flexDirection:"column", alignItems:"center", gap:6,
+                  transition:"all 0.15s",
+                }}>
+                <span style={{ fontSize:22 }}>{p.icon}</span>
+                <span style={{ textAlign:"center", lineHeight:1.2 }}>{p.label}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* BOTÕES DE INTERVALO */}
+          <div style={{ display:"flex", alignItems:"center", gap:10, margin:"4px 0 2px" }}>
+            <div style={{ height:1, flex:1, background:C.border }}/><span style={{ color:C.muted, fontSize:10, fontWeight:700, textTransform:"uppercase", letterSpacing:1.2 }}>Intervalo</span><div style={{ height:1, flex:1, background:C.border }}/>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 }}>
+            {[
+              { label:"Almoço", icon:"🍽", color:"#22C55E", dur:"1h" },
+              { label:"Café",   icon:"☕", color:"#F59E0B", dur:"30min" },
+            ].map(p => (
+              <button key={p.label} onClick={()=>selecionarIntervalo(p.label)}
+                style={{
+                  background: intervalo===p.label ? p.color+"22" : C.card,
+                  border: `2px solid ${intervalo===p.label ? p.color : C.border}`,
+                  borderRadius:10, padding:"16px 12px",
+                  color: intervalo===p.label ? p.color : C.muted,
+                  fontSize:13, fontWeight:800, cursor:"pointer",
+                  display:"flex", alignItems:"center", justifyContent:"center", gap:8,
+                  transition:"all 0.15s",
+                  boxShadow: intervalo===p.label ? `0 0 16px ${p.color}44` : "none",
+                }}>
+                <span style={{ fontSize:24 }}>{p.icon}</span>
+                <div style={{ textAlign:"left" }}>
+                  <div>{p.label}</div>
+                  <div style={{ fontSize:10, opacity:0.7, fontWeight:600 }}>{p.dur}</div>
+                </div>
+                {intervalo===p.label && <span style={{ marginLeft:"auto", fontSize:10, background:p.color+"33", padding:"3px 8px", borderRadius:6, color:p.color }}>Ativo</span>}
+              </button>
+            ))}
+          </div>
+
+          {/* Toast guarnição */}
+          {toastG && <div style={{ position:"fixed", bottom:80, left:"50%", transform:"translateX(-50%)", background:"#1A2A3A", border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 20px", color:C.white, fontSize:13, fontWeight:700, zIndex:100, whiteSpace:"nowrap" }}>{toastG}</div>}
         </div>
       )}
       {activeTab==="ocorrencia" && <OcorrenciaTab userName={me.name}/>}
