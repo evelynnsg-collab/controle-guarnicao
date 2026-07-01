@@ -1,0 +1,18 @@
+{
+  "name": "Controle de Guarnição",
+  "short_name": "Guarnição",
+  "description": "Painel operacional de gestão de guarnição de segurança — Linhas 11-Coral, 12-Safira e 13-Jade.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#080C12",
+  "theme_color": "#080C12",
+  "icons": [
+    {
+      "src": "/icons/app-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
