@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { Agent, Colaborador, DelecaoLog, Ocorrencia, Profile } from "./cg-types";
+import { fbDeleteChild, fbGetMap, fbSetChild, fbSetMap } from "./cg-fb";
 
 const KEYS = {
   profile: "cg_profile",
@@ -11,12 +12,6 @@ const KEYS = {
 
 const isBrowser = typeof window !== "undefined";
 const listeners = new Set<() => void>();
-
-/** Cross-tab channel: broadcasts changes to every other tab on this device. */
-const channel: BroadcastChannel | null =
-  isBrowser && "BroadcastChannel" in window
-    ? new BroadcastChannel("cg_sync")
-    : null;
 
 function emit() {
   listeners.forEach((l) => l());
@@ -32,45 +27,10 @@ function read<T>(key: string, fallback: T): T {
   }
 }
 
-function write<T>(key: string, value: T, broadcast = true) {
+/** Write to the local cache only (no cloud push) — used for merges coming FROM Firebase. */
+function writeLocal<T>(key: string, value: T) {
   if (!isBrowser) return;
   localStorage.setItem(key, JSON.stringify(value));
-  emit();
-  if (broadcast) channel?.postMessage({ key });
-}
-
-if (isBrowser) {
-  // Other tabs via the storage event (fires only in non-origin tabs).
-  window.addEventListener("storage", (e) => {
-    if (e.key && Object.values(KEYS).includes(e.key as never)) emit();
-  });
-  // Other tabs via BroadcastChannel (more reliable, fires immediately).
-  channel?.addEventListener("message", () => emit());
-  // Re-sync when the tab regains focus / becomes visible.
-  window.addEventListener("focus", () => emit());
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") emit();
-  });
-
-  // Polling fallback: mobile browsers frequently suspend background tabs,
-  // which silences BroadcastChannel/storage events until the tab is refocused.
-  // This guarantees tabs converge within a couple of seconds regardless.
-  let lastRaw: Record<string, string | null> = {};
-  Object.values(KEYS).forEach((k) => {
-    lastRaw[k] = localStorage.getItem(k);
-  });
-  setInterval(() => {
-    if (document.visibilityState !== "visible") return;
-    let changed = false;
-    for (const k of Object.values(KEYS)) {
-      const current = localStorage.getItem(k);
-      if (current !== lastRaw[k]) {
-        lastRaw[k] = current;
-        changed = true;
-      }
-    }
-    if (changed) emit();
-  }, 2000);
 }
 
 function subscribe(cb: () => void) {
@@ -78,38 +38,26 @@ function subscribe(cb: () => void) {
   return () => listeners.delete(cb);
 }
 
-
-
-/* ---------- generic getters used by snapshots ---------- */
+/* ---------- generic getters used by snapshots (local cache) ---------- */
 function getProfileRaw(): Profile | null {
   return read<Profile | null>(KEYS.profile, null);
 }
 function getAgentsRaw(): Agent[] {
   const existing = read<Agent[] | null>(KEYS.agents, null);
   if (!existing) return [];
-  // Remove any leftover demo/seed agents from previous versions.
-  const real = existing.filter((a) => !a.id.startsWith("seed-"));
-  if (real.length !== existing.length) write(KEYS.agents, real);
-  return real;
+  return existing.filter((a) => !a.id.startsWith("seed-"));
 }
 const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
 function getOcorrenciasRaw(): Ocorrencia[] {
   const all = read<Ocorrencia[]>(KEYS.ocorrencias, []);
   const cutoff = Date.now() - SEVEN_DAYS;
-  const fresh = all.filter((o) => (o.createdAt ?? 0) >= cutoff);
-  if (fresh.length !== all.length) {
-    write(KEYS.ocorrencias, fresh);
-    const expiredPhotoIds = all
-      .filter((o) => (o.createdAt ?? 0) < cutoff)
-      .flatMap((o) => o.fotos ?? []);
-    if (expiredPhotoIds.length && isBrowser) {
-      import("./cg-photos").then(({ deletePhotos }) => deletePhotos(expiredPhotoIds));
-    }
-  }
-  return fresh;
+  return all.filter((o) => (o.createdAt ?? 0) >= cutoff);
 }
 function getColaboradoresRaw(): Colaborador[] {
   return read<Colaborador[]>(KEYS.colaboradores, []);
+}
+function getDelecoesRaw(): DelecaoLog[] {
+  return read<DelecaoLog[]>(KEYS.delecoes, []);
 }
 
 /* ---------- cached snapshots (stable references for React) ---------- */
@@ -118,20 +66,85 @@ let snapProfile = isBrowser ? getProfileRaw() : null;
 let snapOcor = isBrowser ? getOcorrenciasRaw() : [];
 let snapColab = isBrowser ? getColaboradoresRaw() : [];
 
-listeners.add(() => {
+function recomputeSnapshots() {
   snapAgents = getAgentsRaw();
   snapProfile = getProfileRaw();
   snapOcor = getOcorrenciasRaw();
   snapColab = getColaboradoresRaw();
-});
+}
+listeners.add(recomputeSnapshots);
+
+/* ---------- Firebase sync: agents / ocorrencias / colaboradores share across devices ---------- */
+async function syncAgentsFromCloud() {
+  const map = await fbGetMap<Agent>("agents");
+  const list = Object.values(map).filter((a) => !a.id.startsWith("seed-"));
+  if (list.length === 0 && Object.keys(map).length === 0) return; // nothing in cloud yet, keep local
+  writeLocal(KEYS.agents, list);
+  emit();
+}
+
+async function syncOcorrenciasFromCloud() {
+  const map = await fbGetMap<Ocorrencia>("ocorrencias");
+  const cutoff = Date.now() - SEVEN_DAYS;
+  const fresh: Ocorrencia[] = [];
+  const expiredIds: string[] = [];
+  const expiredPhotoIds: string[] = [];
+  Object.values(map).forEach((o) => {
+    if ((o.createdAt ?? 0) >= cutoff) fresh.push(o);
+    else {
+      expiredIds.push(o.id);
+      if (o.fotos?.length) expiredPhotoIds.push(...o.fotos);
+    }
+  });
+  fresh.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  writeLocal(KEYS.ocorrencias, fresh.slice(0, 200));
+  expiredIds.forEach((id) => fbDeleteChild(`ocorrencias/${id}`));
+  if (expiredPhotoIds.length && isBrowser) {
+    import("./cg-photos").then(({ deletePhotos }) => deletePhotos(expiredPhotoIds));
+  }
+  emit();
+}
+
+async function syncColaboradoresFromCloud() {
+  const map = await fbGetMap<Colaborador>("colaboradores");
+  const list = Object.values(map);
+  if (list.length === 0 && Object.keys(map).length === 0) return;
+  writeLocal(KEYS.colaboradores, list);
+  emit();
+}
+
+async function refreshAllFromCloud() {
+  await Promise.all([syncAgentsFromCloud(), syncOcorrenciasFromCloud(), syncColaboradoresFromCloud()]);
+}
+
+if (isBrowser) {
+  // Same-device cross-tab: storage/broadcast/focus events, same as before.
+  const channel: BroadcastChannel | null =
+    "BroadcastChannel" in window ? new BroadcastChannel("cg_sync") : null;
+  window.addEventListener("storage", (e) => {
+    if (e.key && Object.values(KEYS).includes(e.key as never)) emit();
+  });
+  channel?.addEventListener("message", () => emit());
+  window.addEventListener("focus", () => refreshAllFromCloud());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshAllFromCloud();
+  });
+
+  // Cross-device: poll the shared Firebase database periodically while visible.
+  refreshAllFromCloud();
+  setInterval(() => {
+    if (document.visibilityState === "visible") refreshAllFromCloud();
+  }, 5000);
+}
 
 /* ---------- public API ---------- */
 export const store = {
   setProfile(p: Profile) {
-    write(KEYS.profile, p);
-    // ensure self is part of the roster
+    writeLocal(KEYS.profile, p);
+    emit();
+    // ensure self is part of the shared roster
     const agents = getAgentsRaw().filter((a) => a.id !== p.id);
-    agents.unshift({
+    const self: Agent = {
       id: p.id,
       name: p.name,
       platform: p.platform,
@@ -139,8 +152,11 @@ export const store = {
       onPost: false,
       interval: "none",
       updatedAt: Date.now(),
-    });
-    write(KEYS.agents, agents);
+    };
+    agents.unshift(self);
+    writeLocal(KEYS.agents, agents);
+    emit();
+    fbSetChild(`agents/${p.id}`, self);
   },
   updateSelf(patch: Partial<Agent>) {
     const p = getProfileRaw();
@@ -148,18 +164,25 @@ export const store = {
     const agents = getAgentsRaw().map((a) =>
       a.id === p.id ? { ...a, ...patch, updatedAt: Date.now() } : a,
     );
-    write(KEYS.agents, agents);
+    writeLocal(KEYS.agents, agents);
+    emit();
+    const updated = agents.find((a) => a.id === p.id);
+    if (updated) fbSetChild(`agents/${p.id}`, updated);
   },
   addOcorrencia(o: Ocorrencia) {
-    const list = [o, ...getOcorrenciasRaw()].slice(0, 50);
-    write(KEYS.ocorrencias, list);
+    const list = [o, ...getOcorrenciasRaw()].slice(0, 200);
+    writeLocal(KEYS.ocorrencias, list);
+    emit();
+    fbSetChild(`ocorrencias/${o.id}`, o);
   },
-  /** Delete an occurrence, clean up its photos, and keep an audit trail of who/why. */
+  /** Delete an occurrence, clean up its (local) photos, and keep an audit trail of who/why. */
   removeOcorrencia(id: string, apagadoPor: string, motivo: string) {
     const list = getOcorrenciasRaw();
     const target = list.find((o) => o.id === id);
     if (!target) return;
-    write(KEYS.ocorrencias, list.filter((o) => o.id !== id));
+    writeLocal(KEYS.ocorrencias, list.filter((o) => o.id !== id));
+    emit();
+    fbDeleteChild(`ocorrencias/${id}`);
     if (target.fotos?.length && isBrowser) {
       import("./cg-photos").then(({ deletePhotos }) => deletePhotos(target.fotos!));
     }
@@ -171,11 +194,16 @@ export const store = {
       motivo,
       apagadoEm: Date.now(),
     };
-    const logs = read<DelecaoLog[]>(KEYS.delecoes, []);
-    write(KEYS.delecoes, [log, ...logs].slice(0, 200));
+    const logs = [log, ...getDelecoesRaw()].slice(0, 200);
+    writeLocal(KEYS.delecoes, logs);
+    fbSetChild(`delecoes/${log.id}`, log);
   },
   setColaboradores(list: Colaborador[]) {
-    write(KEYS.colaboradores, list);
+    writeLocal(KEYS.colaboradores, list);
+    emit();
+    const map: Record<string, Colaborador> = {};
+    list.forEach((c) => (map[c.id] = c));
+    fbSetMap("colaboradores", map);
   },
   reset() {
     if (!isBrowser) return;
