@@ -51,6 +51,26 @@ if (isBrowser) {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") emit();
   });
+
+  // Polling fallback: mobile browsers frequently suspend background tabs,
+  // which silences BroadcastChannel/storage events until the tab is refocused.
+  // This guarantees tabs converge within a couple of seconds regardless.
+  let lastRaw: Record<string, string | null> = {};
+  Object.values(KEYS).forEach((k) => {
+    lastRaw[k] = localStorage.getItem(k);
+  });
+  setInterval(() => {
+    if (document.visibilityState !== "visible") return;
+    let changed = false;
+    for (const k of Object.values(KEYS)) {
+      const current = localStorage.getItem(k);
+      if (current !== lastRaw[k]) {
+        lastRaw[k] = current;
+        changed = true;
+      }
+    }
+    if (changed) emit();
+  }, 2000);
 }
 
 function subscribe(cb: () => void) {
