@@ -235,6 +235,7 @@ export function EscalaEditor() {
       pixelRatio: 2,
       backgroundColor: "#080C12",
       cacheBust: true,
+      width: 760, // render wider than the mobile screen so nothing gets clipped
     });
     const res = await fetch(dataUrl);
     return res.blob();
@@ -265,31 +266,25 @@ export function EscalaEditor() {
       const blob = await generateBlob();
       if (!blob) return;
       const data = new Date().toLocaleDateString("pt-BR");
-      const file = new File([blob], `escala-${data.replace(/\//g, "-")}.png`, {
-        type: "image/png",
-      });
-      const nav = navigator as Navigator & {
-        canShare?: (d: ShareData) => boolean;
-      };
-      if (nav.canShare?.({ files: [file] }) && nav.share) {
-        await nav.share({
-          files: [file],
-          title: "Escala operacional",
-          text: `Escala operacional — ${data}`,
-        });
-        return;
-      }
-      // Fallback: download the image and open the specific WhatsApp chat to attach it.
+      const fileName = `escala-${data.replace(/\//g, "-")}.png`;
+
+      // Download the image first, then jump straight into that person's WhatsApp
+      // chat. We deliberately don't use the generic share sheet here: it lets the
+      // user pick WhatsApp but not the specific contact, which defeats the point
+      // of "send to Naty/Foeger". Browsers don't allow a site to auto-attach a
+      // file inside WhatsApp for you (that's blocked for everyone's safety), so
+      // the one remaining tap is picking the just-downloaded image to attach.
       const link = document.createElement("a");
-      link.download = file.name;
+      link.download = fileName;
       link.href = URL.createObjectURL(blob);
       link.click();
       URL.revokeObjectURL(link.href);
+
       const msg = encodeURIComponent(
-        `Escala operacional — ${data}. (Imagem baixada, anexe aqui na conversa)`,
+        `Escala operacional — ${data}. (Imagem baixada — toque em 📎 e anexe a última foto/download)`,
       );
       window.open(`https://wa.me/${number}?text=${msg}`, "_blank");
-      toast.success(`Imagem baixada — anexe na conversa do WhatsApp com ${recipient} que abriu`);
+      toast.success(`Chat com ${recipient} aberto — anexe a imagem baixada e envie`);
     } catch {
       toast.error("Não foi possível compartilhar");
     } finally {
@@ -374,28 +369,28 @@ export function EscalaEditor() {
         </div>
 
         <div className="overflow-hidden rounded-xl border border-border">
-          <div className="grid grid-cols-[1.4fr_1.4fr_0.8fr_0.8fr] bg-secondary text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-            <div className="px-2 py-2">Posto</div>
-            <div className="border-l border-border px-2 py-2">Agente</div>
-            <div className="border-l border-border px-2 py-2 text-center">Café</div>
-            <div className="border-l border-border px-2 py-2 text-center">Almoço</div>
+          <div className="grid grid-cols-[1.5fr_1.3fr_0.65fr_0.7fr] bg-secondary text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+            <div className="px-1.5 py-2">Posto</div>
+            <div className="border-l border-border px-1.5 py-2">Agente</div>
+            <div className="border-l border-border px-1 py-2 text-center">Café</div>
+            <div className="border-l border-border px-1 py-2 text-center">Almoço</div>
           </div>
           {rows.map((r) => (
             <div
               key={r.id}
-              className="group grid grid-cols-[1.4fr_1.4fr_0.8fr_0.8fr] border-t border-border"
+              className="group grid grid-cols-[1.5fr_1.3fr_0.65fr_0.7fr] border-t border-border"
             >
-              <div className="px-2 py-1.5">
+              <div className="px-1.5 py-1.5">
                 <input
-                  className={cellInput}
+                  className={cn(cellInput, "text-xs")}
                   value={r.posto}
                   placeholder="Posto"
                   onChange={(e) => update(r.id, { posto: e.target.value })}
                 />
               </div>
-              <div className="relative border-l border-border px-2 py-1.5">
+              <div className="relative border-l border-border px-1.5 py-1.5">
                 <select
-                  className={cn(cellInput, "appearance-none pr-5")}
+                  className={cn(cellInput, "appearance-none pr-4 text-xs")}
                   value={r.agente}
                   onChange={(e) => update(r.id, { agente: e.target.value })}
                 >
@@ -419,9 +414,9 @@ export function EscalaEditor() {
                   <Trash2 className="size-3.5" />
                 </button>
               </div>
-              <div className="border-l border-border px-1 py-1.5">
+              <div className="border-l border-border px-0.5 py-1.5">
                 <select
-                  className={cn(cellInput, "text-center")}
+                  className={cn(cellInput, "appearance-none text-center text-xs")}
                   value={r.cafe}
                   onChange={(e) => update(r.id, { cafe: e.target.value })}
                 >
@@ -432,9 +427,9 @@ export function EscalaEditor() {
                   ))}
                 </select>
               </div>
-              <div className="border-l border-border px-1 py-1.5">
+              <div className="border-l border-border px-0.5 py-1.5">
                 <select
-                  className={cn(cellInput, "text-center")}
+                  className={cn(cellInput, "appearance-none text-center text-xs")}
                   value={r.almoco}
                   onChange={(e) => update(r.id, { almoco: e.target.value })}
                 >
