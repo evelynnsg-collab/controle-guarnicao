@@ -1,11 +1,12 @@
 import { useSyncExternalStore } from "react";
-import type { Agent, Colaborador, Ocorrencia, Profile } from "./cg-types";
+import type { Agent, Colaborador, DelecaoLog, Ocorrencia, Profile } from "./cg-types";
 
 const KEYS = {
   profile: "cg_profile",
   agents: "cg_agents",
   ocorrencias: "cg_ocorrencias",
   colaboradores: "cg_colaboradores",
+  delecoes: "cg_delecoes",
 } as const;
 
 const isBrowser = typeof window !== "undefined";
@@ -132,6 +133,26 @@ export const store = {
   addOcorrencia(o: Ocorrencia) {
     const list = [o, ...getOcorrenciasRaw()].slice(0, 50);
     write(KEYS.ocorrencias, list);
+  },
+  /** Delete an occurrence, clean up its photos, and keep an audit trail of who/why. */
+  removeOcorrencia(id: string, apagadoPor: string, motivo: string) {
+    const list = getOcorrenciasRaw();
+    const target = list.find((o) => o.id === id);
+    if (!target) return;
+    write(KEYS.ocorrencias, list.filter((o) => o.id !== id));
+    if (target.fotos?.length && isBrowser) {
+      import("./cg-photos").then(({ deletePhotos }) => deletePhotos(target.fotos!));
+    }
+    const log: DelecaoLog = {
+      id: crypto.randomUUID(),
+      ocorrenciaId: target.id,
+      resumo: `${target.data} · ${target.local} · ${target.ocorrencia.slice(0, 80)}`,
+      apagadoPor,
+      motivo,
+      apagadoEm: Date.now(),
+    };
+    const logs = read<DelecaoLog[]>(KEYS.delecoes, []);
+    write(KEYS.delecoes, [log, ...logs].slice(0, 200));
   },
   setColaboradores(list: Colaborador[]) {
     write(KEYS.colaboradores, list);

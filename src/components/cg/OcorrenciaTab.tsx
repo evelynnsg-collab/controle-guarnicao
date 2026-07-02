@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Camera, FileText, Sparkles, X } from "lucide-react";
+import { Camera, FileText, Sparkles, Trash2, X } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { jsPDF } from "jspdf";
@@ -143,6 +143,32 @@ export function OcorrenciaTab() {
 
   function removePhoto(id: string) {
     setPhotos((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  // Delete flow: requires the deleter's name + reason before actually removing.
+  const [deleteTarget, setDeleteTarget] = useState<Ocorrencia | null>(null);
+  const [deleteNome, setDeleteNome] = useState("");
+  const [deleteMotivo, setDeleteMotivo] = useState("");
+
+  function openDelete(o: Ocorrencia) {
+    setDeleteTarget(o);
+    setDeleteNome("");
+    setDeleteMotivo("");
+  }
+  function closeDelete() {
+    setDeleteTarget(null);
+  }
+  function confirmDelete() {
+    if (!deleteTarget) return;
+    const nome = deleteNome.trim();
+    const motivo = deleteMotivo.trim();
+    if (!nome || !motivo) {
+      toast.error("Informe seu nome e o motivo para excluir.");
+      return;
+    }
+    store.removeOcorrencia(deleteTarget.id, nome, motivo);
+    toast.success("Ocorrência excluída");
+    setDeleteTarget(null);
   }
 
   // AI: rewrite Ocorrência / Encaminhamento / Situação final to be more formal
@@ -540,9 +566,67 @@ export function OcorrenciaTab() {
                 <button type="button" onClick={() => whatsapp(buildText(o))} className="rounded-lg bg-jade/15 px-3 py-1.5 text-xs font-medium text-jade">
                   WhatsApp
                 </button>
+                <button
+                  type="button"
+                  onClick={() => openDelete(o)}
+                  className="ml-auto flex items-center gap-1 rounded-lg bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive"
+                >
+                  <Trash2 className="size-3.5" />
+                  Excluir
+                </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center" onClick={closeDelete}>
+          <div
+            className="w-full max-w-sm rounded-2xl border border-border bg-background p-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-sm font-semibold">Excluir ocorrência</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {deleteTarget.data} · {deleteTarget.local}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Essa ação não pode ser desfeita. Informe seu nome e o motivo para confirmar.
+            </p>
+
+            <label className="mt-3 block">
+              <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Seu nome</span>
+              <input
+                autoFocus
+                className={inputCls}
+                value={deleteNome}
+                onChange={(e) => setDeleteNome(e.target.value)}
+                placeholder="Nome de quem está apagando"
+              />
+            </label>
+            <label className="mt-3 block">
+              <span className="mb-1.5 block text-xs font-medium text-muted-foreground">Motivo</span>
+              <textarea
+                className={cn(inputCls, "min-h-16 resize-y")}
+                value={deleteMotivo}
+                onChange={(e) => setDeleteMotivo(e.target.value)}
+                placeholder="Por que essa ocorrência está sendo excluída"
+              />
+            </label>
+
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <button type="button" onClick={closeDelete} className="rounded-xl bg-secondary py-3 text-sm font-semibold">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDelete}
+                className="rounded-xl bg-destructive py-3 text-sm font-semibold text-destructive-foreground"
+              >
+                Confirmar exclusão
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

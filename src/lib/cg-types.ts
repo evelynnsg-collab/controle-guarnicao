@@ -49,6 +49,15 @@ export interface Ocorrencia {
   fotos?: string[];
 }
 
+export interface DelecaoLog {
+  id: string;
+  ocorrenciaId: string;
+  resumo: string;
+  apagadoPor: string;
+  motivo: string;
+  apagadoEm: number;
+}
+
 export interface Colaborador {
   id: string;
   name: string;
