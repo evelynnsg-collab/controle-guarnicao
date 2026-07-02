@@ -15,7 +15,8 @@ interface EscalaRow {
   almoco: string;
 }
 
-const WHATSAPP_NUMBER = "5511954753502"; // 11 95475-3502
+const NATY_WHATSAPP_NUMBER = "5511954753502"; // Naty · 11 95475-3502
+const FOEGER_WHATSAPP_NUMBER = "5511973852463"; // Foeger · 11 97385-2463
 
 const CAFE_OPTIONS = ["08:00", "08:30", "09:00"];
 const ALMOCO_OPTIONS = ["10:00", "10:30", "11:00", "11:30", "12:00"];
@@ -258,7 +259,7 @@ export function EscalaEditor() {
     }
   }
 
-  async function shareWhatsApp() {
+  async function shareWhatsApp(number: string, recipient: string) {
     setExporting(true);
     try {
       const blob = await generateBlob();
@@ -278,7 +279,7 @@ export function EscalaEditor() {
         });
         return;
       }
-      // Fallback: download the image and open the WhatsApp chat to attach it.
+      // Fallback: download the image and open the specific WhatsApp chat to attach it.
       const link = document.createElement("a");
       link.download = file.name;
       link.href = URL.createObjectURL(blob);
@@ -287,8 +288,8 @@ export function EscalaEditor() {
       const msg = encodeURIComponent(
         `Escala operacional — ${data}. (Imagem baixada, anexe aqui na conversa)`,
       );
-      window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`, "_blank");
-      toast.success("Imagem baixada — anexe na conversa do WhatsApp que abriu");
+      window.open(`https://wa.me/${number}?text=${msg}`, "_blank");
+      toast.success(`Imagem baixada — anexe na conversa do WhatsApp com ${recipient} que abriu`);
     } catch {
       toast.error("Não foi possível compartilhar");
     } finally {
@@ -453,24 +454,33 @@ export function EscalaEditor() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <button
           type="button"
           onClick={exportImage}
           disabled={exporting}
-          className="flex items-center justify-center gap-2 rounded-xl bg-secondary py-3.5 text-sm font-semibold disabled:opacity-60"
+          className="flex flex-col items-center justify-center gap-1 rounded-xl bg-secondary py-3.5 text-xs font-semibold disabled:opacity-60"
         >
           <ImageDown className="size-4" />
           {exporting ? "Gerando..." : "Salvar imagem"}
         </button>
         <button
           type="button"
-          onClick={shareWhatsApp}
+          onClick={() => shareWhatsApp(NATY_WHATSAPP_NUMBER, "Naty")}
           disabled={exporting}
-          className="flex items-center justify-center gap-2 rounded-xl bg-primary py-3.5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+          className="flex flex-col items-center justify-center gap-1 rounded-xl bg-primary py-3.5 text-xs font-semibold text-primary-foreground disabled:opacity-60"
         >
           <Send className="size-4" />
-          {exporting ? "Gerando..." : "Enviar no WhatsApp"}
+          {exporting ? "Gerando..." : "Enviar p/ Naty"}
+        </button>
+        <button
+          type="button"
+          onClick={() => shareWhatsApp(FOEGER_WHATSAPP_NUMBER, "Foeger")}
+          disabled={exporting}
+          className="flex flex-col items-center justify-center gap-1 rounded-xl bg-primary py-3.5 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+        >
+          <Send className="size-4" />
+          {exporting ? "Gerando..." : "Enviar p/ Foeger"}
         </button>
       </div>
     </div>

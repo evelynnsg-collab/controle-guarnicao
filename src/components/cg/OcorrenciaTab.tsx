@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 
 type AiField = "ocorrencia" | "encaminhamento" | "situacaoFinal";
 
+const HISTORICO_WHATSAPP_NUMBER = "5511914324246"; // +55 11 91432-4246
+
 
 type SubTab = "form" | "preview" | "history";
 
@@ -195,14 +197,18 @@ export function OcorrenciaTab() {
         /* user cancelled or unsupported — fall back to download */
       }
     }
+    // Fallback: download the PDF and open the specific WhatsApp chat to attach it.
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("PDF baixado. Anexe-o no WhatsApp.");
-    window.open("https://wa.me/", "_blank");
+    const msg = encodeURIComponent(
+      "Histórico de Ocorrências. (PDF baixado, anexe aqui na conversa)",
+    );
+    window.open(`https://wa.me/${HISTORICO_WHATSAPP_NUMBER}?text=${msg}`, "_blank");
+    toast.success("PDF baixado — anexe na conversa do WhatsApp que abriu");
   }
 
 
@@ -341,7 +347,7 @@ export function OcorrenciaTab() {
               className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-jade px-3 py-2 text-xs font-semibold text-jade-foreground"
             >
               <FileText className="size-4" />
-              PDF + WhatsApp
+              Enviar histórico (PDF)
             </button>
           </div>
           {history.length === 0 && (
