@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Sparkles } from "lucide-react";
+import { Camera, FileText, Sparkles, X } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { jsPDF } from "jspdf";
 import { LOCAL_OPTIONS } from "@/lib/cg-constants";
 import { formalizarTexto } from "@/lib/cg-ai.functions";
 import { store, useOcorrencias, useProfile } from "@/lib/cg-store";
+import { savePhoto, getPhoto, blobToDataUrl } from "@/lib/cg-photos";
 import type { Ocorrencia } from "@/lib/cg-types";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +70,43 @@ function Field({
 const inputCls =
   "w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm outline-none transition-colors focus:border-ring";
 
+function HistoryPhotos({ ids }: { ids: string[] }) {
+  const [urls, setUrls] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const created: string[] = [];
+    (async () => {
+      const loaded: string[] = [];
+      for (const id of ids) {
+        const blob = await getPhoto(id);
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          created.push(url);
+          loaded.push(url);
+        }
+      }
+      if (!cancelled) setUrls(loaded);
+    })();
+    return () => {
+      cancelled = true;
+      created.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [ids]);
+
+  if (ids.length === 0) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {urls.map((u, i) => (
+        <a key={i} href={u} target="_blank" rel="noopener noreferrer">
+          <img src={u} alt="" className="size-14 rounded-lg border border-border object-cover" />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 export function OcorrenciaTab() {
   const profile = useProfile();
   const history = useOcorrencias();
@@ -77,6 +115,35 @@ export function OcorrenciaTab() {
 
   const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
   const previewText = useMemo(() => buildText(form), [form]);
+
+  // Photos attached to the report being filled in (stored in IndexedDB on selection).
+  const [photos, setPhotos] = useState<{ id: string; url: string }[]>([]);
+  const [photosBusy, setPhotosBusy] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  async function onPickPhotos(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    setPhotosBusy(true);
+    try {
+      const added: { id: string; url: string }[] = [];
+      for (const file of files) {
+        const id = await savePhoto(file);
+        added.push({ id, url: URL.createObjectURL(file) });
+      }
+      setPhotos((prev) => [...prev, ...added]);
+      toast.success(`${files.length} foto(s) anexada(s)`);
+    } catch {
+      toast.error("Não foi possível anexar as fotos");
+    } finally {
+      setPhotosBusy(false);
+    }
+  }
+
+  function removePhoto(id: string) {
+    setPhotos((prev) => prev.filter((p) => p.id !== id));
+  }
 
   // AI: rewrite Ocorrência / Encaminhamento / Situação final to be more formal
   const runFormalize = useServerFn(formalizarTexto);
@@ -124,7 +191,13 @@ export function OcorrenciaTab() {
 
 
   function save() {
-    store.addOcorrencia({ ...form, id: crypto.randomUUID(), createdAt: Date.now() });
+    store.addOcorrencia({
+      ...form,
+      id: crypto.randomUUID(),
+      createdAt: Date.now(),
+      fotos: photos.map((p) => p.id),
+    });
+    setPhotos([]);
     toast.success("Ocorrência salva no histórico");
   }
   async function copy(text: string) {
@@ -135,7 +208,16 @@ export function OcorrenciaTab() {
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   }
 
-  function buildPdfBlob() {
+  function loadImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ w: img.naturalWidth || 1, h: img.naturalHeight || 1 });
+      img.onerror = () => resolve({ w: 1, h: 1 });
+      img.src = dataUrl;
+    });
+  }
+
+  async function buildPdfBlob() {
     const doc = new jsPDF({ unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -143,8 +225,10 @@ export function OcorrenciaTab() {
     const marginTop = 22;
     const footerY = pageHeight - 12;
     const contentWidth = pageWidth - marginX * 2;
+    const footerLimit = footerY - 8;
 
-    history.forEach((o, idx) => {
+    for (let idx = 0; idx < history.length; idx++) {
+      const o = history[idx];
       if (idx > 0) doc.addPage();
 
       doc.setFont("helvetica", "bold");
@@ -164,7 +248,50 @@ export function OcorrenciaTab() {
       doc.setFontSize(11);
       const lines = doc.splitTextToSize(buildText(o), contentWidth);
       doc.text(lines, marginX, marginTop + 14);
-    });
+
+      // Attached photos, laid out in a 2-column grid below the text.
+      const photoIds = o.fotos ?? [];
+      if (photoIds.length > 0) {
+        const textHeight = doc.getTextDimensions(lines).h;
+        let y = marginTop + 14 + textHeight + 8;
+        const gap = 4;
+        const colWidth = (contentWidth - gap) / 2;
+        const maxCellHeight = 70;
+        let col = 0;
+
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(10);
+        doc.text("Fotos anexadas:", marginX, y);
+        y += 6;
+
+        for (const id of photoIds) {
+          const blob = await getPhoto(id);
+          if (!blob) continue;
+          const dataUrl = await blobToDataUrl(blob);
+          const size = await loadImageSize(dataUrl);
+          const ratio = size.h / size.w;
+          const cellH = Math.min(maxCellHeight, colWidth * ratio);
+
+          if (y + cellH > footerLimit) {
+            doc.addPage();
+            y = marginTop;
+            col = 0;
+          }
+          const x = marginX + col * (colWidth + gap);
+          try {
+            doc.addImage(dataUrl, "JPEG", x, y, colWidth, cellH, undefined, "FAST");
+          } catch {
+            /* skip photo that fails to embed */
+          }
+          if (col === 1) {
+            y += cellH + gap;
+            col = 0;
+          } else {
+            col = 1;
+          }
+        }
+      }
+    }
 
     const pageCount = doc.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
@@ -187,7 +314,7 @@ export function OcorrenciaTab() {
       return;
     }
     const fileName = `historico-ocorrencias-${new Date().toISOString().slice(0, 10)}.pdf`;
-    const blob = buildPdfBlob();
+    const blob = await buildPdfBlob();
     const file = new File([blob], fileName, { type: "application/pdf" });
     if (navigator.canShare?.({ files: [file] })) {
       try {
@@ -308,6 +435,48 @@ export function OcorrenciaTab() {
             <input className={cn(inputCls, "opacity-70")} value={form.responsavel} readOnly />
           </Field>
 
+          <div className="rounded-xl border border-border p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Fotos {photos.length > 0 && `(${photos.length})`}
+              </p>
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={onPickPhotos}
+              />
+              <button
+                type="button"
+                onClick={() => photoInputRef.current?.click()}
+                disabled={photosBusy}
+                className="flex items-center gap-1.5 rounded-lg bg-secondary px-2.5 py-1.5 text-xs font-medium disabled:opacity-60"
+              >
+                <Camera className="size-3.5" />
+                {photosBusy ? "Anexando..." : "Adicionar fotos"}
+              </button>
+            </div>
+            {photos.length > 0 && (
+              <div className="grid grid-cols-4 gap-2">
+                {photos.map((p) => (
+                  <div key={p.id} className="group relative aspect-square overflow-hidden rounded-lg border border-border">
+                    <img src={p.url} alt="" className="size-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removePhoto(p.id)}
+                      className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white"
+                      aria-label="Remover foto"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-3 pt-1">
             <button type="button" onClick={save} className="rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground">
               Salvar
@@ -363,6 +532,7 @@ export function OcorrenciaTab() {
                 <p className="text-xs text-muted-foreground">{o.data}</p>
               </div>
               <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{o.ocorrencia || "—"}</p>
+              <HistoryPhotos ids={o.fotos ?? []} />
               <div className="mt-2 flex gap-2">
                 <button type="button" onClick={() => copy(buildText(o))} className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium">
                   Copiar

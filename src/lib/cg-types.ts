@@ -45,6 +45,8 @@ export interface Ocorrencia {
   testemunha: string;
   responsavel: string;
   createdAt: number;
+  /** IDs of photos attached to this report, stored separately in IndexedDB (see cg-photos.ts). */
+  fotos?: string[];
 }
 
 export interface Colaborador {

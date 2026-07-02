@@ -76,7 +76,15 @@ function getOcorrenciasRaw(): Ocorrencia[] {
   const all = read<Ocorrencia[]>(KEYS.ocorrencias, []);
   const cutoff = Date.now() - SEVEN_DAYS;
   const fresh = all.filter((o) => (o.createdAt ?? 0) >= cutoff);
-  if (fresh.length !== all.length) write(KEYS.ocorrencias, fresh);
+  if (fresh.length !== all.length) {
+    write(KEYS.ocorrencias, fresh);
+    const expiredPhotoIds = all
+      .filter((o) => (o.createdAt ?? 0) < cutoff)
+      .flatMap((o) => o.fotos ?? []);
+    if (expiredPhotoIds.length && isBrowser) {
+      import("./cg-photos").then(({ deletePhotos }) => deletePhotos(expiredPhotoIds));
+    }
+  }
   return fresh;
 }
 function getColaboradoresRaw(): Colaborador[] {
