@@ -1,12 +1,12 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState } from "react";
 import { Toaster } from "sonner";
-import { ClipboardList, LayoutGrid, Settings } from "lucide-react";
+import { ClipboardList, LayoutGrid, LogOut, Settings } from "lucide-react";
 import { Cadastro } from "@/components/cg/Cadastro";
 import { GuarnicaoTab } from "@/components/cg/GuarnicaoTab";
 import { OcorrenciaTab } from "@/components/cg/OcorrenciaTab";
 import { AdminTab } from "@/components/cg/AdminTab";
-import { useProfile } from "@/lib/cg-store";
+import { store, useProfile } from "@/lib/cg-store";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/")({
@@ -51,10 +51,23 @@ function App() {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col">
-      <header className="sticky top-0 z-10 border-b border-border bg-background/90 px-4 py-3 backdrop-blur">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/90 px-4 py-3 backdrop-blur">
         <h1 className="text-lg font-semibold tracking-tight">
           {TABS.find((t) => t.key === tab)?.label}
         </h1>
+        <button
+          type="button"
+          onClick={() => {
+            if (confirm("Sair do app? Você volta pra tela inicial e precisa entrar de novo.")) {
+              store.logout();
+            }
+          }}
+          className="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-muted-foreground"
+          aria-label="Sair"
+        >
+          <LogOut className="size-4" />
+          Sair
+        </button>
       </header>
 
       <main className="flex-1 pb-20">

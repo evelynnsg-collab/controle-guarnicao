@@ -117,6 +117,30 @@ async function refreshAllFromCloud() {
   await Promise.all([syncAgentsFromCloud(), syncOcorrenciasFromCloud(), syncColaboradoresFromCloud()]);
 }
 
+const LAST_RESET_KEY = "cg_last_posto_reset";
+function todayStr() {
+  return new Date().toISOString().slice(0, 10);
+}
+/** Once a day, clear leftover post/onPost/interval from the previous shift for every agent. */
+async function resetPostosIfNewDay() {
+  if (!isBrowser) return;
+  const today = todayStr();
+  if (localStorage.getItem(LAST_RESET_KEY) === today) return;
+  localStorage.setItem(LAST_RESET_KEY, today);
+
+  const map = await fbGetMap<Agent>("agents");
+  const stale = Object.values(map).filter(
+    (a) => a.onPost || a.location != null || (a.interval && a.interval !== "none"),
+  );
+  if (stale.length === 0) return;
+  await Promise.all(
+    stale.map((a) =>
+      fbSetChild(`agents/${a.id}`, { ...a, onPost: false, location: null, interval: "none", updatedAt: Date.now() }),
+    ),
+  );
+  await syncAgentsFromCloud();
+}
+
 if (isBrowser) {
   // Same-device cross-tab: storage/broadcast/focus events, same as before.
   const channel: BroadcastChannel | null =
@@ -132,6 +156,7 @@ if (isBrowser) {
 
   // Cross-device: poll the shared Firebase database periodically while visible.
   refreshAllFromCloud();
+  resetPostosIfNewDay();
   setInterval(() => {
     if (document.visibilityState === "visible") refreshAllFromCloud();
   }, 5000);
@@ -204,6 +229,20 @@ export const store = {
     const map: Record<string, Colaborador> = {};
     list.forEach((c) => (map[c.id] = c));
     fbSetMap("colaboradores", map);
+  },
+  /** Leave the post (reset onPost/location/interval) and return to the initial screen. */
+  logout() {
+    const p = getProfileRaw();
+    if (p) {
+      const agents = getAgentsRaw().map((a) =>
+        a.id === p.id ? { ...a, onPost: false, location: null, interval: "none" as const, updatedAt: Date.now() } : a,
+      );
+      writeLocal(KEYS.agents, agents);
+      const self = agents.find((a) => a.id === p.id);
+      if (self) fbSetChild(`agents/${p.id}`, self);
+    }
+    localStorage.removeItem(KEYS.profile);
+    emit();
   },
   reset() {
     if (!isBrowser) return;
