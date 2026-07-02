@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { FileText, Sparkles } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
+import { jsPDF } from "jspdf";
 import { LOCAL_OPTIONS } from "@/lib/cg-constants";
 import { formalizarTexto } from "@/lib/cg-ai.functions";
 import { store, useOcorrencias, useProfile } from "@/lib/cg-store";
@@ -132,27 +133,60 @@ export function OcorrenciaTab() {
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   }
 
-  function buildWordBlob() {
-    const body = history
-      .map(
-        (o) =>
-          `<div style="margin-bottom:24px;white-space:pre-wrap;font-family:Arial,sans-serif;font-size:11pt">${buildText(o)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")}</div>`,
-      )
-      .join('<hr style="border:none;border-top:1px solid #ccc;margin:16px 0"/>');
-    const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>Histórico de Ocorrências</title></head><body><h2 style="font-family:Arial,sans-serif">Histórico de Ocorrências</h2>${body}</body></html>`;
-    return new Blob(["\ufeff", html], { type: "application/msword" });
+  function buildPdfBlob() {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const marginX = 18;
+    const marginTop = 22;
+    const footerY = pageHeight - 12;
+    const contentWidth = pageWidth - marginX * 2;
+
+    history.forEach((o, idx) => {
+      if (idx > 0) doc.addPage();
+
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(14);
+      doc.text("Registro de Ocorrência", marginX, marginTop);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      doc.setTextColor(120);
+      doc.text(`Relatório ${idx + 1} de ${history.length}`, pageWidth - marginX, marginTop, { align: "right" });
+      doc.setTextColor(0);
+
+      doc.setDrawColor(200);
+      doc.line(marginX, marginTop + 4, pageWidth - marginX, marginTop + 4);
+
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(11);
+      const lines = doc.splitTextToSize(buildText(o), contentWidth);
+      doc.text(lines, marginX, marginTop + 14);
+    });
+
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setDrawColor(220);
+      doc.line(marginX, footerY - 5, pageWidth - marginX, footerY - 5);
+      doc.setFont("helvetica", "italic");
+      doc.setFontSize(8.5);
+      doc.setTextColor(130);
+      doc.text("Projeto criado e desenvolvido por Evelyn Santos - AAS", pageWidth / 2, footerY, { align: "center" });
+      doc.setTextColor(0);
+    }
+
+    return doc.output("blob");
   }
 
-  async function exportWordWhatsApp() {
+  async function exportPdfWhatsApp() {
     if (history.length === 0) {
       toast.error("Nenhuma ocorrência no histórico.");
       return;
     }
-    const fileName = `historico-ocorrencias-${new Date().toISOString().slice(0, 10)}.doc`;
-    const blob = buildWordBlob();
-    const file = new File([blob], fileName, { type: "application/msword" });
+    const fileName = `historico-ocorrencias-${new Date().toISOString().slice(0, 10)}.pdf`;
+    const blob = buildPdfBlob();
+    const file = new File([blob], fileName, { type: "application/pdf" });
     if (navigator.canShare?.({ files: [file] })) {
       try {
         await navigator.share({ files: [file], title: "Histórico de Ocorrências" });
@@ -167,7 +201,7 @@ export function OcorrenciaTab() {
     a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
-    toast.success("Documento Word baixado. Anexe-o no WhatsApp.");
+    toast.success("PDF baixado. Anexe-o no WhatsApp.");
     window.open("https://wa.me/", "_blank");
   }
 
@@ -303,11 +337,11 @@ export function OcorrenciaTab() {
             </p>
             <button
               type="button"
-              onClick={exportWordWhatsApp}
+              onClick={exportPdfWhatsApp}
               className="flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-jade px-3 py-2 text-xs font-semibold text-jade-foreground"
             >
               <FileText className="size-4" />
-              Word + WhatsApp
+              PDF + WhatsApp
             </button>
           </div>
           {history.length === 0 && (
