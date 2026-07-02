@@ -230,8 +230,37 @@ export function OcorrenciaTab() {
     await navigator.clipboard.writeText(text);
     toast.success("Texto copiado");
   }
-  function whatsapp(text: string) {
+  async function whatsapp(text: string, photoIds: string[] = []) {
+    if (photoIds.length === 0) {
+      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+      return;
+    }
+    const files: File[] = [];
+    for (const id of photoIds) {
+      const blob = await getPhoto(id);
+      if (blob) files.push(new File([blob], `foto-${id}.jpg`, { type: blob.type || "image/jpeg" }));
+    }
+    const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+    if (files.length > 0 && nav.canShare?.({ files }) && nav.share) {
+      try {
+        // Native share sheet: photos go in already attached (real images).
+        await nav.share({ files, text, title: "Ocorrência" });
+        return;
+      } catch {
+        /* user cancelled, or file+text sharing unsupported — fall back below */
+      }
+    }
+    // Fallback: open the WhatsApp text chat and download the photos to attach manually.
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+    files.forEach((f) => {
+      const url = URL.createObjectURL(f);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = f.name;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+    if (files.length > 0) toast.success("Fotos baixadas — anexe na conversa que abriu");
   }
 
   function loadImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
@@ -523,7 +552,7 @@ export function OcorrenciaTab() {
             <button type="button" onClick={() => copy(previewText)} className="rounded-xl bg-secondary py-3 text-sm font-semibold">
               Copiar
             </button>
-            <button type="button" onClick={() => whatsapp(previewText)} className="rounded-xl bg-jade py-3 text-sm font-semibold text-jade-foreground">
+            <button type="button" onClick={() => whatsapp(previewText, photos.map((p) => p.id))} className="rounded-xl bg-jade py-3 text-sm font-semibold text-jade-foreground">
               WhatsApp
             </button>
           </div>
@@ -563,7 +592,7 @@ export function OcorrenciaTab() {
                 <button type="button" onClick={() => copy(buildText(o))} className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium">
                   Copiar
                 </button>
-                <button type="button" onClick={() => whatsapp(buildText(o))} className="rounded-lg bg-jade/15 px-3 py-1.5 text-xs font-medium text-jade">
+                <button type="button" onClick={() => whatsapp(buildText(o), o.fotos ?? [])} className="rounded-lg bg-jade/15 px-3 py-1.5 text-xs font-medium text-jade">
                   WhatsApp
                 </button>
                 <button
