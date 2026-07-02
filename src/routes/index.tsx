@@ -6,6 +6,7 @@ import { Cadastro } from "@/components/cg/Cadastro";
 import { GuarnicaoTab } from "@/components/cg/GuarnicaoTab";
 import { OcorrenciaTab } from "@/components/cg/OcorrenciaTab";
 import { AdminTab } from "@/components/cg/AdminTab";
+import { CreditBar } from "@/components/cg/CreditBar";
 import { store, useProfile } from "@/lib/cg-store";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +44,7 @@ function App() {
   if (!profile) {
     return (
       <>
+        <CreditBar />
         <Cadastro />
         <Toaster theme="dark" position="top-center" />
       </>
@@ -51,6 +53,7 @@ function App() {
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-md flex-col">
+      <CreditBar />
       <header className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-background/90 px-4 py-3 backdrop-blur">
         <h1 className="text-lg font-semibold tracking-tight">
           {TABS.find((t) => t.key === tab)?.label}
