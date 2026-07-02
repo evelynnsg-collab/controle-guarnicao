@@ -160,6 +160,7 @@ export function EscalaEditor() {
   const [rows, setRows] = useState<EscalaRow[]>(buildDefault);
   const [exporting, setExporting] = useState(false);
   const tableRef = useRef<HTMLDivElement>(null);
+  const exportRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   function update(id: string, patch: Partial<EscalaRow>) {
@@ -227,12 +228,11 @@ export function EscalaEditor() {
   }
 
   async function generateBlob(): Promise<Blob | null> {
-    if (!tableRef.current) return null;
-    const dataUrl = await toPng(tableRef.current, {
+    if (!exportRef.current) return null;
+    const dataUrl = await toPng(exportRef.current, {
       pixelRatio: 2,
       backgroundColor: "#080C12",
       cacheBust: true,
-      width: 760, // render wider than the mobile screen so nothing gets clipped
     });
     const res = await fetch(dataUrl);
     return res.blob();
@@ -456,6 +456,42 @@ export function EscalaEditor() {
         <p className="mt-2 text-center text-[10px] text-muted-foreground">
           Café 30min · Almoço 1h
         </p>
+      </div>
+
+      {/* Hidden, plain-text, fixed-width version used ONLY for the exported image.
+          Kept separate from the editable table above so the export never depends
+          on scroll position or form-control quirks — it always renders complete. */}
+      <div style={{ position: "fixed", top: 0, left: -9999, pointerEvents: "none" }}>
+        <div ref={exportRef} className="w-[640px] bg-background p-5" style={{ backgroundColor: "#080C12" }}>
+          <div className="mb-3 text-center">
+            <p className="text-base font-bold tracking-tight text-foreground">ESCALA OPERACIONAL</p>
+            <p className="text-xs text-muted-foreground">
+              {new Date().toLocaleDateString("pt-BR", {
+                weekday: "long",
+                day: "2-digit",
+                month: "long",
+                year: "numeric",
+              })}
+            </p>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-border">
+            <div className="grid grid-cols-[220px_180px_100px_110px] bg-secondary text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="px-2 py-2">Posto</div>
+              <div className="border-l border-border px-2 py-2">Agente</div>
+              <div className="border-l border-border px-2 py-2 text-center">Café</div>
+              <div className="border-l border-border px-2 py-2 text-center">Almoço</div>
+            </div>
+            {rows.map((r) => (
+              <div key={r.id} className="grid grid-cols-[220px_180px_100px_110px] border-t border-border">
+                <div className="px-2 py-2 text-sm text-foreground">{r.posto || "—"}</div>
+                <div className="border-l border-border px-2 py-2 text-sm text-foreground">{r.agente || "—"}</div>
+                <div className="border-l border-border px-2 py-2 text-center text-sm text-foreground">{r.cafe}</div>
+                <div className="border-l border-border px-2 py-2 text-center text-sm text-foreground">{r.almoco}</div>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-center text-[10px] text-muted-foreground">Café 30min · Almoço 1h</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-2">
