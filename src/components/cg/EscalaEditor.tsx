@@ -267,19 +267,30 @@ export function EscalaEditor() {
       if (!blob) return;
       const data = new Date().toLocaleDateString("pt-BR");
       const fileName = `escala-${data.replace(/\//g, "-")}.png`;
+      const file = new File([blob], fileName, { type: "image/png" });
 
-      // Download the image first, then jump straight into that person's WhatsApp
-      // chat. We deliberately don't use the generic share sheet here: it lets the
-      // user pick WhatsApp but not the specific contact, which defeats the point
-      // of "send to Naty/Foeger". Browsers don't allow a site to auto-attach a
-      // file inside WhatsApp for you (that's blocked for everyone's safety), so
-      // the one remaining tap is picking the just-downloaded image to attach.
+      const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
+      if (nav.canShare?.({ files: [file] }) && nav.share) {
+        // Native share sheet: the image goes in already attached (real image,
+        // not just a download link). The one remaining tap is picking WhatsApp
+        // and then the contact — browsers don't allow a site to pick a specific
+        // WhatsApp contact for you, that step always needs a human tap.
+        await nav.share({
+          files: [file],
+          title: "Escala operacional",
+          text: `Escala operacional — ${data} — para ${recipient}`,
+        });
+        toast.success(`Escolha WhatsApp e o contato de ${recipient} na tela que abriu`);
+        return;
+      }
+
+      // Fallback for browsers without file-sharing support: download the image
+      // and open the specific chat directly so at least the recipient is right.
       const link = document.createElement("a");
       link.download = fileName;
       link.href = URL.createObjectURL(blob);
       link.click();
       URL.revokeObjectURL(link.href);
-
       const msg = encodeURIComponent(
         `Escala operacional — ${data}. (Imagem baixada — toque em 📎 e anexe a última foto/download)`,
       );
@@ -368,81 +379,86 @@ export function EscalaEditor() {
           </p>
         </div>
 
-        <div className="overflow-hidden rounded-xl border border-border">
-          <div className="grid grid-cols-[1.5fr_1.3fr_0.65fr_0.7fr] bg-secondary text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-            <div className="px-1.5 py-2">Posto</div>
-            <div className="border-l border-border px-1.5 py-2">Agente</div>
-            <div className="border-l border-border px-1 py-2 text-center">Café</div>
-            <div className="border-l border-border px-1 py-2 text-center">Almoço</div>
-          </div>
-          {rows.map((r) => (
-            <div
-              key={r.id}
-              className="group grid grid-cols-[1.5fr_1.3fr_0.65fr_0.7fr] border-t border-border"
-            >
-              <div className="px-1.5 py-1.5">
-                <input
-                  className={cn(cellInput, "text-xs")}
-                  value={r.posto}
-                  placeholder="Posto"
-                  onChange={(e) => update(r.id, { posto: e.target.value })}
-                />
-              </div>
-              <div className="relative border-l border-border px-1.5 py-1.5">
-                <select
-                  className={cn(cellInput, "appearance-none pr-4 text-xs")}
-                  value={r.agente}
-                  onChange={(e) => update(r.id, { agente: e.target.value })}
-                >
-                  <option value="">— selecionar —</option>
-                  {colaboradores.map((c) => (
-                    <option key={c.id} value={c.name}>
-                      {c.name}
-                    </option>
-                  ))}
-                  {/* allow keeping a custom name that is no longer in the list */}
-                  {r.agente && !colaboradores.some((c) => c.name === r.agente) && (
-                    <option value={r.agente}>{r.agente}</option>
-                  )}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => removeRow(r.id)}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground"
-                  aria-label="Remover linha"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              </div>
-              <div className="border-l border-border px-0.5 py-1.5">
-                <select
-                  className={cn(cellInput, "appearance-none text-center text-xs")}
-                  value={r.cafe}
-                  onChange={(e) => update(r.id, { cafe: e.target.value })}
-                >
-                  {CAFE_OPTIONS.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="border-l border-border px-0.5 py-1.5">
-                <select
-                  className={cn(cellInput, "appearance-none text-center text-xs")}
-                  value={r.almoco}
-                  onChange={(e) => update(r.id, { almoco: e.target.value })}
-                >
-                  {ALMOCO_OPTIONS.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </div>
+        <div className="-mx-1 overflow-x-auto px-1">
+          <div className="min-w-[600px] overflow-hidden rounded-xl border border-border">
+            <div className="grid grid-cols-[200px_165px_85px_90px] bg-secondary text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="px-2 py-2">Posto</div>
+              <div className="border-l border-border px-2 py-2">Agente</div>
+              <div className="border-l border-border px-1 py-2 text-center">Café</div>
+              <div className="border-l border-border px-1 py-2 text-center">Almoço</div>
             </div>
-          ))}
+            {rows.map((r) => (
+              <div
+                key={r.id}
+                className="group grid grid-cols-[200px_165px_85px_90px] border-t border-border"
+              >
+                <div className="px-2 py-1.5">
+                  <input
+                    className={cn(cellInput, "text-sm")}
+                    value={r.posto}
+                    placeholder="Posto"
+                    onChange={(e) => update(r.id, { posto: e.target.value })}
+                  />
+                </div>
+                <div className="relative border-l border-border px-2 py-1.5">
+                  <select
+                    className={cn(cellInput, "appearance-none pr-4 text-sm")}
+                    value={r.agente}
+                    onChange={(e) => update(r.id, { agente: e.target.value })}
+                  >
+                    <option value="">— selecionar —</option>
+                    {colaboradores.map((c) => (
+                      <option key={c.id} value={c.name}>
+                        {c.name}
+                      </option>
+                    ))}
+                    {/* allow keeping a custom name that is no longer in the list */}
+                    {r.agente && !colaboradores.some((c) => c.name === r.agente) && (
+                      <option value={r.agente}>{r.agente}</option>
+                    )}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => removeRow(r.id)}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground"
+                    aria-label="Remover linha"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
+                <div className="border-l border-border px-1 py-1.5">
+                  <select
+                    className={cn(cellInput, "appearance-none text-center text-sm")}
+                    value={r.cafe}
+                    onChange={(e) => update(r.id, { cafe: e.target.value })}
+                  >
+                    {CAFE_OPTIONS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="border-l border-border px-1 py-1.5">
+                  <select
+                    className={cn(cellInput, "appearance-none text-center text-sm")}
+                    value={r.almoco}
+                    onChange={(e) => update(r.id, { almoco: e.target.value })}
+                  >
+                    {ALMOCO_OPTIONS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
+        <p className="mt-1 text-center text-[10px] text-muted-foreground/70">
+          Arraste pro lado para ver todas as colunas
+        </p>
 
         <p className="mt-2 text-center text-[10px] text-muted-foreground">
           Café 30min · Almoço 1h
