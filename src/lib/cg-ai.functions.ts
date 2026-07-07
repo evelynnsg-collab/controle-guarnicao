@@ -3,13 +3,14 @@ import { z } from "zod";
 
 const Input = z.object({
   text: z.string().min(1),
-  campo: z.enum(["ocorrencia", "encaminhamento", "situacaoFinal"]),
+  campo: z.enum(["ocorrencia", "encaminhamento", "situacaoFinal", "condicoesInformadas"]),
 });
 
 const LABELS: Record<string, string> = {
   ocorrencia: "descrição da ocorrência",
   encaminhamento: "encaminhamento dado",
   situacaoFinal: "situação final",
+  condicoesInformadas: "condições informadas pelo paciente/passageiro",
 };
 
 const SYSTEM_PROMPT =
