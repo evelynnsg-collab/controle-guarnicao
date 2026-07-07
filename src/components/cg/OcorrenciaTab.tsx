@@ -34,8 +34,7 @@ const emptyForm = (responsavel: string): Omit<Ocorrencia, "id" | "createdAt"> =>
   condicoesInformadas: "",
   encaminhamento: "",
   prontoSocorro: "",
-  aas: responsavel,
-  matricula: "",
+  aasLista: [{ nome: responsavel, matricula: "" }],
 });
 
 function buildText(o: Omit<Ocorrencia, "id" | "createdAt">) {
@@ -60,8 +59,9 @@ function buildText(o: Omit<Ocorrencia, "id" | "createdAt">) {
     `*ENCAMINHAMENTO:* ${o.encaminhamento || "-"}`,
     `*Pronto Socorro:* ${o.prontoSocorro || "-"}`,
     ``,
-    `*AAS:* ${o.aas || "-"}`,
-    `*Matrícula:* ${o.matricula || "-"}`,
+    ...(o.aasLista || []).map((a, i) =>
+      `*AAS ${(o.aasLista || []).length > 1 ? i + 1 + ": " : ""}* ${a.nome || "-"}   *Matrícula:* ${a.matricula || "-"}`
+    ),
   ].join("\n");
 }
 
@@ -534,14 +534,61 @@ export function OcorrenciaTab() {
             <input className={inputCls} placeholder="Hospital / UPA acionada" value={form.prontoSocorro} onChange={(e) => set("prontoSocorro", e.target.value)} />
           </Field>
 
-          {/* AAS / Matrícula */}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="AAS">
-              <input className={cn(inputCls, "opacity-70")} value={form.aas} readOnly />
-            </Field>
-            <Field label="Matrícula">
-              <input className={inputCls} placeholder="Sua matrícula" value={form.matricula} onChange={(e) => set("matricula", e.target.value)} />
-            </Field>
+          {/* AAS / Matrícula - lista dinâmica */}
+          <div className="rounded-xl border border-border p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                AAS envolvidos
+              </p>
+              <button
+                type="button"
+                onClick={() => set("aasLista", [...(form.aasLista || []), { nome: "", matricula: "" }])}
+                className="flex items-center gap-1 rounded-lg bg-primary/20 px-2.5 py-1 text-xs font-bold text-primary"
+              >
+                + Adicionar AAS
+              </button>
+            </div>
+            <div className="space-y-2">
+              {(form.aasLista || []).map((a, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="flex flex-1 flex-col gap-1">
+                    <input
+                      className={inputCls}
+                      placeholder={i === 0 ? "Seu nome (AAS)" : "Nome do AAS"}
+                      value={a.nome}
+                      readOnly={i === 0}
+                      onChange={(e) => {
+                        const lista = [...(form.aasLista || [])];
+                        lista[i] = { ...lista[i], nome: e.target.value };
+                        set("aasLista", lista);
+                      }}
+                    />
+                    <input
+                      className={inputCls}
+                      placeholder="Matrícula"
+                      value={a.matricula}
+                      onChange={(e) => {
+                        const lista = [...(form.aasLista || [])];
+                        lista[i] = { ...lista[i], matricula: e.target.value };
+                        set("aasLista", lista);
+                      }}
+                    />
+                  </div>
+                  {i > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const lista = (form.aasLista || []).filter((_, idx) => idx !== i);
+                        set("aasLista", lista);
+                      }}
+                      className="rounded-lg bg-destructive/20 p-2 text-destructive"
+                    >
+                      <X className="size-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
           <div className="rounded-xl border border-border p-3">
