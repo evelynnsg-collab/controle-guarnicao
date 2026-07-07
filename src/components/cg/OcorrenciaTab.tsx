@@ -18,37 +18,50 @@ const HISTORICO_WHATSAPP_NUMBER = "5511914324246"; // +55 11 91432-4246
 type SubTab = "form" | "preview" | "history";
 
 const emptyForm = (responsavel: string): Omit<Ocorrencia, "id" | "createdAt"> => ({
-  data: new Date().toISOString().slice(0, 10),
+  aps: "",
+  linha: "",
+  estacao: "",
+  local: "",
+  data: new Date().toLocaleDateString("pt-BR"),
   horaInicio: "",
   horaFim: "",
-  local: LOCAL_OPTIONS[0],
+  apsNumero: "",
+  complexidade: "",
   passNome: "",
-  passCpf: "",
-  passEndereco: "",
+  passIdade: "",
+  passDocumento: "",
   passTelefone: "",
-  ocorrencia: "",
+  condicoesInformadas: "",
   encaminhamento: "",
-  situacaoFinal: "",
-  testemunha: "",
-  responsavel,
+  prontoSocorro: "",
+  aas: responsavel,
+  matricula: "",
 });
 
 function buildText(o: Omit<Ocorrencia, "id" | "createdAt">) {
   return [
-    `REGISTRO DE OCORRÊNCIA`,
-    `Data: ${o.data}   Início: ${o.horaInicio || "-"}   Término: ${o.horaFim || "-"}`,
-    `Local: ${o.local}`,
+    `*APS:* ${o.aps || "-"}`,
     ``,
-    `Passageiro: ${o.passNome || "-"}`,
-    `CPF: ${o.passCpf || "-"}   Telefone: ${o.passTelefone || "-"}`,
-    `Endereço: ${o.passEndereco || "-"}`,
+    `*LINHA:* ${o.linha || "-"}`,
+    `*ESTAÇÃO:* ${o.estacao || "-"}`,
+    `*LOCAL:* ${o.local || "-"}`,
+    `*DATA:* ${o.data || "-"}`,
+    `*INÍCIO:* ${o.horaInicio || "-"}`,
+    `*TÉRMINO:* ${o.horaFim || "-"}`,
+    `*APS N°:* ${o.apsNumero || "-"}`,
+    `*COMPLEXIDADE:* ${o.complexidade || "-"}`,
     ``,
-    `Ocorrência: ${o.ocorrencia || "-"}`,
-    `Encaminhamento: ${o.encaminhamento || "-"}`,
-    `Situação final: ${o.situacaoFinal || "-"}`,
+    `*NOME:* ${o.passNome || "-"}`,
+    `*IDADE:* ${o.passIdade || "-"}`,
+    `*DOCUMENTO:* ${o.passDocumento || "-"}`,
+    `*TELEFONE:* ${o.passTelefone || "-"}`,
     ``,
-    `Testemunha: ${o.testemunha || "-"}`,
-    `Responsável: ${o.responsavel}`,
+    `*CONDIÇÕES INFORMADAS:* ${o.condicoesInformadas || "-"}`,
+    `*ENCAMINHAMENTO:* ${o.encaminhamento || "-"}`,
+    `*Pronto Socorro:* ${o.prontoSocorro || "-"}`,
+    ``,
+    `*AAS:* ${o.aas || "-"}`,
+    `*Matrícula:* ${o.matricula || "-"}`,
   ].join("\n");
 }
 
@@ -420,9 +433,30 @@ export function OcorrenciaTab() {
 
       {sub === "form" && (
         <div className="space-y-3">
+
+          {/* APS */}
+          <Field label="APS">
+            <input className={inputCls} placeholder="Identificação do APS" value={form.aps} onChange={(e) => set("aps", e.target.value)} />
+          </Field>
+
+          {/* Linha / Estação / Local */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Linha">
+              <input className={inputCls} placeholder="Ex: Linha 11" value={form.linha} onChange={(e) => set("linha", e.target.value)} />
+            </Field>
+            <Field label="Estação">
+              <input className={inputCls} placeholder="Ex: Brás" value={form.estacao} onChange={(e) => set("estacao", e.target.value)} />
+            </Field>
+          </div>
+
+          <Field label="Local">
+            <input className={inputCls} placeholder="Ex: Plataforma 4/5" value={form.local} onChange={(e) => set("local", e.target.value)} />
+          </Field>
+
+          {/* Data / Início / Término */}
           <div className="grid grid-cols-3 gap-3">
             <Field label="Data">
-              <input type="date" className={inputCls} value={form.data} onChange={(e) => set("data", e.target.value)} />
+              <input className={inputCls} placeholder="dd/mm/aaaa" value={form.data} onChange={(e) => set("data", e.target.value)} />
             </Field>
             <Field label="Início">
               <input type="time" className={inputCls} value={form.horaInicio} onChange={(e) => set("horaInicio", e.target.value)} />
@@ -432,63 +466,83 @@ export function OcorrenciaTab() {
             </Field>
           </div>
 
-          <Field label="Local">
-            <select className={inputCls} value={form.local} onChange={(e) => set("local", e.target.value)}>
-              {LOCAL_OPTIONS.map((o) => (
-                <option key={o} value={o}>
-                  {o}
-                </option>
-              ))}
-            </select>
-          </Field>
+          {/* APS N° / Complexidade */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="APS N°">
+              <input className={inputCls} placeholder="Número do APS" value={form.apsNumero} onChange={(e) => set("apsNumero", e.target.value)} />
+            </Field>
+            <Field label="Complexidade">
+              <input className={inputCls} placeholder="Ex: Baixa" value={form.complexidade} onChange={(e) => set("complexidade", e.target.value)} />
+            </Field>
+          </div>
 
+          {/* Dados da pessoa */}
           <div className="rounded-xl border border-border p-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              Passageiro
+              Dados da pessoa
             </p>
             <div className="space-y-3">
-              <input className={inputCls} placeholder="Nome" value={form.passNome} onChange={(e) => set("passNome", e.target.value)} />
+              <Field label="Nome">
+                <input className={inputCls} placeholder="Nome completo" value={form.passNome} onChange={(e) => set("passNome", e.target.value)} />
+              </Field>
               <div className="grid grid-cols-2 gap-3">
-                <input className={inputCls} placeholder="CPF" value={form.passCpf} onChange={(e) => set("passCpf", e.target.value)} />
-                <input className={inputCls} placeholder="Telefone" value={form.passTelefone} onChange={(e) => set("passTelefone", e.target.value)} />
+                <Field label="Idade">
+                  <input className={inputCls} placeholder="Ex: 35" value={form.passIdade} onChange={(e) => set("passIdade", e.target.value)} />
+                </Field>
+                <Field label="Telefone">
+                  <input className={inputCls} placeholder="(11) 9 0000-0000" value={form.passTelefone} onChange={(e) => set("passTelefone", e.target.value)} />
+                </Field>
               </div>
-              <input className={inputCls} placeholder="Endereço" value={form.passEndereco} onChange={(e) => set("passEndereco", e.target.value)} />
+              <Field label="Documento">
+                <input className={inputCls} placeholder="RG ou CPF" value={form.passDocumento} onChange={(e) => set("passDocumento", e.target.value)} />
+              </Field>
             </div>
           </div>
 
-          {(
-            [
-              { key: "ocorrencia" as const, label: "Ocorrência", min: "min-h-24" },
-              { key: "encaminhamento" as const, label: "Encaminhamento", min: "min-h-20" },
-              { key: "situacaoFinal" as const, label: "Situação final", min: "min-h-20" },
-            ]
-          ).map((f) => (
-            <Field key={f.key} label={f.label}>
-              <div className="relative">
-                <textarea
-                  className={cn(inputCls, f.min, "resize-y pr-9")}
-                  value={form[f.key]}
-                  onChange={(e) => setAi(f.key, e.target.value)}
-                />
-                <span
-                  className={cn(
-                    "pointer-events-none absolute right-2 top-2 flex items-center gap-1 text-[10px] font-medium text-primary transition-opacity",
-                    aiBusy[f.key] ? "opacity-100" : "opacity-0",
-                  )}
-                >
-                  <Sparkles className="size-3.5 animate-pulse" />
-                  IA
-                </span>
-              </div>
-            </Field>
-          ))}
+          {/* Condições informadas */}
+          <Field label="Condições informadas">
+            <div className="relative">
+              <textarea
+                className={cn(inputCls, "min-h-24 resize-y pr-9")}
+                placeholder="Descreva as condições informadas..."
+                value={form.condicoesInformadas}
+                onChange={(e) => setAi("ocorrencia" as AiField, e.target.value)}
+              />
+              <span className={cn("pointer-events-none absolute right-2 top-2 flex items-center gap-1 text-[10px] font-medium text-primary transition-opacity", aiBusy["ocorrencia"] ? "opacity-100" : "opacity-0")}>
+                <Sparkles className="size-3.5 animate-pulse" /> IA
+              </span>
+            </div>
+          </Field>
 
-          <Field label="Testemunha">
-            <input className={inputCls} value={form.testemunha} onChange={(e) => set("testemunha", e.target.value)} />
+          {/* Encaminhamento */}
+          <Field label="Encaminhamento">
+            <div className="relative">
+              <textarea
+                className={cn(inputCls, "min-h-20 resize-y pr-9")}
+                placeholder="Medidas tomadas, acionamentos..."
+                value={form.encaminhamento}
+                onChange={(e) => setAi("encaminhamento" as AiField, e.target.value)}
+              />
+              <span className={cn("pointer-events-none absolute right-2 top-2 flex items-center gap-1 text-[10px] font-medium text-primary transition-opacity", aiBusy["encaminhamento"] ? "opacity-100" : "opacity-0")}>
+                <Sparkles className="size-3.5 animate-pulse" /> IA
+              </span>
+            </div>
           </Field>
-          <Field label="Responsável">
-            <input className={cn(inputCls, "opacity-70")} value={form.responsavel} readOnly />
+
+          {/* Pronto Socorro */}
+          <Field label="Pronto Socorro">
+            <input className={inputCls} placeholder="Hospital / UPA acionada" value={form.prontoSocorro} onChange={(e) => set("prontoSocorro", e.target.value)} />
           </Field>
+
+          {/* AAS / Matrícula */}
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="AAS">
+              <input className={cn(inputCls, "opacity-70")} value={form.aas} readOnly />
+            </Field>
+            <Field label="Matrícula">
+              <input className={inputCls} placeholder="Sua matrícula" value={form.matricula} onChange={(e) => set("matricula", e.target.value)} />
+            </Field>
+          </div>
 
           <div className="rounded-xl border border-border p-3">
             <div className="mb-2 flex items-center justify-between">
