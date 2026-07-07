@@ -31,19 +31,26 @@ export interface Profile {
 
 export interface Ocorrencia {
   id: string;
+  /** APS (número/identificação do atendimento) */
+  aps: string;
+  linha: string;
+  estacao: string;
+  local: string;
   data: string;
   horaInicio: string;
   horaFim: string;
-  local: string;
+  apsNumero: string;
+  complexidade: string;
+  /** Dados da pessoa atendida */
   passNome: string;
-  passCpf: string;
-  passEndereco: string;
+  passIdade: string;
+  passDocumento: string;
   passTelefone: string;
-  ocorrencia: string;
+  condicoesInformadas: string;
   encaminhamento: string;
-  situacaoFinal: string;
-  testemunha: string;
-  responsavel: string;
+  prontoSocorro: string;
+  aas: string;
+  matricula: string;
   createdAt: number;
   /** IDs of photos attached to this report, stored separately in IndexedDB (see cg-photos.ts). */
   fotos?: string[];
