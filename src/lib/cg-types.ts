@@ -49,8 +49,8 @@ export interface Ocorrencia {
   condicoesInformadas: string;
   encaminhamento: string;
   prontoSocorro: string;
-  aas: string;
-  matricula: string;
+  /** Lista de AAS envolvidos: [{nome, matricula}] */
+  aasLista: Array<{ nome: string; matricula: string }>;
   createdAt: number;
   /** IDs of photos attached to this report, stored separately in IndexedDB (see cg-photos.ts). */
   fotos?: string[];
