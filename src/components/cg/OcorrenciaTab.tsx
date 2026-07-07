@@ -10,7 +10,7 @@ import { savePhoto, getPhoto, blobToDataUrl } from "@/lib/cg-photos";
 import type { Ocorrencia } from "@/lib/cg-types";
 import { cn } from "@/lib/utils";
 
-type AiField = "ocorrencia" | "encaminhamento" | "situacaoFinal";
+type AiField = "condicoesInformadas" | "encaminhamento";
 
 const HISTORICO_WHATSAPP_NUMBER = "5511914324246"; // +55 11 91432-4246
 
@@ -187,19 +187,16 @@ export function OcorrenciaTab() {
   // AI: rewrite Ocorrência / Encaminhamento / Situação final to be more formal
   const runFormalize = useServerFn(formalizarTexto);
   const [aiBusy, setAiBusy] = useState<Record<AiField, boolean>>({
-    ocorrencia: false,
+    condicoesInformadas: false,
     encaminhamento: false,
-    situacaoFinal: false,
   });
   const timers = useRef<Record<AiField, ReturnType<typeof setTimeout> | null>>({
-    ocorrencia: null,
+    condicoesInformadas: null,
     encaminhamento: null,
-    situacaoFinal: null,
   });
   const lastAi = useRef<Record<AiField, string>>({
-    ocorrencia: "",
+    condicoesInformadas: "",
     encaminhamento: "",
-    situacaoFinal: "",
   });
 
   const setAi = (k: AiField, v: string) => {
@@ -506,9 +503,12 @@ export function OcorrenciaTab() {
                 className={cn(inputCls, "min-h-24 resize-y pr-9")}
                 placeholder="Descreva as condições informadas..."
                 value={form.condicoesInformadas}
-                onChange={(e) => setAi("ocorrencia" as AiField, e.target.value)}
+                onChange={(e) => {
+                  set("condicoesInformadas", e.target.value);
+                  setAi("condicoesInformadas", e.target.value);
+                }}
               />
-              <span className={cn("pointer-events-none absolute right-2 top-2 flex items-center gap-1 text-[10px] font-medium text-primary transition-opacity", aiBusy["ocorrencia"] ? "opacity-100" : "opacity-0")}>
+              <span className={cn("pointer-events-none absolute right-2 top-2 flex items-center gap-1 text-[10px] font-medium text-primary transition-opacity", aiBusy["condicoesInformadas"] ? "opacity-100" : "opacity-0")}>
                 <Sparkles className="size-3.5 animate-pulse" /> IA
               </span>
             </div>
