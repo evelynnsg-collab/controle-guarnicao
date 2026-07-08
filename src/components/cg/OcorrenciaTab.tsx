@@ -4,7 +4,6 @@ import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { jsPDF } from "jspdf";
 import { LOCAL_OPTIONS } from "@/lib/cg-constants";
-import { formalizarTexto } from "@/lib/cg-ai.functions";
 import { store, useOcorrencias, useProfile } from "@/lib/cg-store";
 import { savePhoto, getPhoto, blobToDataUrl } from "@/lib/cg-photos";
 import type { Ocorrencia } from "@/lib/cg-types";
@@ -185,7 +184,6 @@ export function OcorrenciaTab() {
   }
 
   // AI: rewrite Ocorrência / Encaminhamento / Situação final to be more formal
-  const runFormalize = useServerFn(formalizarTexto);
   const [aiBusy, setAiBusy] = useState<Record<AiField, boolean>>({
     condicoesInformadas: false,
     encaminhamento: false,
@@ -199,27 +197,81 @@ export function OcorrenciaTab() {
     encaminhamento: "",
   });
 
+  // Chama Gemini direto do browser — sem servidor, sem custo
+  const chamarGemini = async (texto: string): Promise<string | null> => {
+    const SYSTEM = "Você é um redator de relatórios operacionais de segurança ferroviária (CPTM/Metrô São Paulo). " +
+      "Reescreva o texto abaixo de forma clara, correta e profissional. " +
+      "Use português formal, corrija erros de ortografia e gramática, melhore a estrutura das frases. " +
+      "Mantenha TODOS os fatos e informações originais. NÃO invente nada. " +
+      "Retorne APENAS o texto reescrito, sem aspas, sem explicações, sem introdução.";
+
+    const prompt = `${SYSTEM}\n\nTexto para reescrever:\n${texto}`;
+    const body = JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
+    });
+
+    // Tenta modelos em sequência
+    const modelos = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro"];
+    
+    // Usa chave do localStorage se tiver, ou pede ao usuário
+    let gKey = localStorage.getItem("gn_gemini_key") || "";
+    
+    if (!gKey) {
+      gKey = prompt("Cole sua chave do Gemini (aistudio.google.com):\n(Será salva apenas neste dispositivo)") || "";
+      if (gKey) localStorage.setItem("gn_gemini_key", gKey);
+    }
+
+    if (!gKey) return null;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...(gKey.startsWith("AQ.") || gKey.startsWith("ya29.")
+        ? { "Authorization": `Bearer ${gKey}` }
+        : { "x-goog-api-key": gKey }),
+    };
+
+    for (const modelo of modelos) {
+      try {
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`,
+          { method: "POST", headers, body }
+        );
+        if (r.ok) {
+          const j = await r.json();
+          const t = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (t && t.length > 5) return t;
+        } else if (r.status === 401) {
+          // Chave inválida ou expirada — limpa e pede nova
+          localStorage.removeItem("gn_gemini_key");
+          toast.error("Chave Gemini expirada. Gere uma nova em aistudio.google.com");
+          return null;
+        }
+      } catch { continue; }
+    }
+    return null;
+  };
+
   const setAi = (k: AiField, v: string) => {
     if (timers.current[k]) clearTimeout(timers.current[k]!);
     const value = v.trim();
-    // Só dispara se tiver conteúdo suficiente
     if (value.length < 10) return;
     timers.current[k] = setTimeout(async () => {
       setAiBusy((b) => ({ ...b, [k]: true }));
       try {
-        const { text } = await runFormalize({ data: { text: value, campo: k } });
-        if (text && text.trim().length > 5) {
-          lastAi.current[k] = text;
-          set(k, text.trim());
-          toast.success("✓ Texto corrigido pela IA");
+        const melhorado = await chamarGemini(value);
+        if (melhorado && melhorado.length > 5) {
+          lastAi.current[k] = melhorado;
+          set(k, melhorado.trim());
+          toast.success("✓ Texto corrigido pelo Gemini");
         }
       } catch (err) {
-        console.error("AI error:", err);
-        toast.error("Erro ao corrigir texto. Verifique a conexão.");
+        console.error("Gemini error:", err);
+        toast.error("Erro ao conectar com Gemini.");
       } finally {
         setAiBusy((b) => ({ ...b, [k]: false }));
       }
-    }, 20000); // 20 segundos após parar de digitar
+    }, 20000);
   };
 
   useEffect(() => {
