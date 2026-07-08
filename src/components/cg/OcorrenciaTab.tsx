@@ -116,6 +116,43 @@ function HistoryPhotos({ ids }: { ids: string[] }) {
         </a>
       ))}
     </div>
+
+      {/* Modal para inserir chave Gemini */}
+      {showKeyModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 pb-8">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-background p-5 shadow-2xl">
+            <h3 className="mb-1 text-base font-bold text-foreground">🔑 Chave do Gemini</h3>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Para corrigir textos com IA, cole sua chave gratuita do Gemini.{" "}
+              <span className="text-primary">Acesse aistudio.google.com/apikey</span>
+            </p>
+            <textarea
+              className="mb-3 w-full rounded-xl border border-border bg-card p-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              rows={3}
+              placeholder="Cole aqui sua chave AQ.Ab8RN6..."
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowKeyModal(false); pendingFieldRef.current = null; }}
+                className="flex-1 rounded-xl border border-border py-2.5 text-sm font-semibold text-muted-foreground"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={salvarChave}
+                disabled={!keyInput.trim()}
+                className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-40"
+              >
+                Salvar e corrigir
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -197,42 +234,50 @@ export function OcorrenciaTab() {
     encaminhamento: "",
   });
 
-  // Chama Gemini direto do browser — sem servidor, sem custo
-  const chamarGemini = async (texto: string): Promise<string | null> => {
-    const SYSTEM = "Você é um redator de relatórios operacionais de segurança ferroviária (CPTM/Metrô São Paulo). " +
-      "Reescreva o texto abaixo de forma clara, correta e profissional. " +
-      "Use português formal, corrija erros de ortografia e gramática, melhore a estrutura das frases. " +
-      "Mantenha TODOS os fatos e informações originais. NÃO invente nada. " +
-      "Retorne APENAS o texto reescrito, sem aspas, sem explicações, sem introdução.";
+  // Chave Gemini salva no dispositivo
+  const [geminiKey, setGeminiKey] = useState<string>(
+    () => localStorage.getItem("gn_gemini_key") || ""
+  );
+  const [showKeyModal, setShowKeyModal] = useState(false);
+  const [keyInput, setKeyInput] = useState("");
+  const pendingFieldRef = useRef<{ k: AiField; v: string } | null>(null);
 
-    const prompt = `${SYSTEM}\n\nTexto para reescrever:\n${texto}`;
+  const salvarChave = () => {
+    const k = keyInput.trim();
+    if (!k) return;
+    localStorage.setItem("gn_gemini_key", k);
+    setGeminiKey(k);
+    setShowKeyModal(false);
+    // Retoma a correção com a nova chave
+    if (pendingFieldRef.current) {
+      const { k: campo, v } = pendingFieldRef.current;
+      pendingFieldRef.current = null;
+      executarGemini(campo, v, k);
+    }
+  };
+
+  const SYSTEM_PROMPT =
+    "Você é um redator de relatórios operacionais de segurança ferroviária (CPTM/Metrô São Paulo). " +
+    "Reescreva o texto abaixo de forma clara, correta e profissional. " +
+    "Use português formal, corrija erros de ortografia e gramática, melhore a estrutura das frases. " +
+    "Mantenha TODOS os fatos e informações originais. NÃO invente nada. " +
+    "Retorne APENAS o texto reescrito, sem aspas, sem explicações, sem introdução.";
+
+  const executarGemini = async (k: AiField, texto: string, chave: string) => {
+    const prompt = `${SYSTEM_PROMPT}\n\nTexto para reescrever:\n${texto}`;
     const body = JSON.stringify({
       contents: [{ role: "user", parts: [{ text: prompt }] }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
     });
-
-    // Tenta modelos em sequência
-    const modelos = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-pro"];
-    
-    // Usa chave do localStorage se tiver, ou pede ao usuário
-    let gKey = localStorage.getItem("gn_gemini_key") || "";
-    
-    if (!gKey) {
-      gKey = prompt("Cole sua chave do Gemini (aistudio.google.com):\n(Será salva apenas neste dispositivo)") || "";
-      if (gKey) localStorage.setItem("gn_gemini_key", gKey);
-    }
-
-    if (!gKey) return null;
-
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      ...(gKey.startsWith("AQ.") || gKey.startsWith("ya29.")
-        ? { "Authorization": `Bearer ${gKey}` }
-        : { "x-goog-api-key": gKey }),
+      ...(chave.startsWith("AQ.") || chave.startsWith("ya29.")
+        ? { "Authorization": `Bearer ${chave}` }
+        : { "x-goog-api-key": chave }),
     };
-
-    for (const modelo of modelos) {
-      try {
+    setAiBusy((b) => ({ ...b, [k]: true }));
+    try {
+      for (const modelo of ["gemini-2.0-flash", "gemini-1.5-flash"]) {
         const r = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`,
           { method: "POST", headers, body }
@@ -240,16 +285,36 @@ export function OcorrenciaTab() {
         if (r.ok) {
           const j = await r.json();
           const t = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-          if (t && t.length > 5) return t;
-        } else if (r.status === 401) {
-          // Chave inválida ou expirada — limpa e pede nova
+          if (t && t.length > 5) {
+            set(k, t);
+            toast.success("✓ Texto corrigido pelo Gemini");
+            return;
+          }
+        } else if (r.status === 401 || r.status === 403) {
           localStorage.removeItem("gn_gemini_key");
-          toast.error("Chave Gemini expirada. Gere uma nova em aistudio.google.com");
-          return null;
+          setGeminiKey("");
+          pendingFieldRef.current = { k, v: texto };
+          setKeyInput("");
+          setShowKeyModal(true);
+          return;
         }
-      } catch { continue; }
+      }
+      toast.error("Gemini não respondeu. Tente novamente.");
+    } catch {
+      toast.error("Erro ao conectar com Gemini.");
+    } finally {
+      setAiBusy((b) => ({ ...b, [k]: false }));
     }
-    return null;
+  };
+
+  const chamarGemini = async (k: AiField, texto: string) => {
+    if (!geminiKey) {
+      pendingFieldRef.current = { k, v: texto };
+      setKeyInput("");
+      setShowKeyModal(true);
+      return;
+    }
+    await executarGemini(k, texto, geminiKey);
   };
 
   const setAi = (k: AiField, v: string) => {
@@ -259,12 +324,7 @@ export function OcorrenciaTab() {
     timers.current[k] = setTimeout(async () => {
       setAiBusy((b) => ({ ...b, [k]: true }));
       try {
-        const melhorado = await chamarGemini(value);
-        if (melhorado && melhorado.length > 5) {
-          lastAi.current[k] = melhorado;
-          set(k, melhorado.trim());
-          toast.success("✓ Texto corrigido pelo Gemini");
-        }
+        await chamarGemini(k, value);
       } catch (err) {
         console.error("Gemini error:", err);
         toast.error("Erro ao conectar com Gemini.");
@@ -813,6 +873,43 @@ export function OcorrenciaTab() {
                 className="rounded-xl bg-destructive py-3 text-sm font-semibold text-destructive-foreground"
               >
                 Confirmar exclusão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+
+      {/* Modal para inserir chave Gemini */}
+      {showKeyModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 pb-8">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-background p-5 shadow-2xl">
+            <h3 className="mb-1 text-base font-bold text-foreground">🔑 Chave do Gemini</h3>
+            <p className="mb-3 text-xs text-muted-foreground">
+              Para corrigir textos com IA, cole sua chave gratuita do Gemini.{" "}
+              <span className="text-primary">Acesse aistudio.google.com/apikey</span>
+            </p>
+            <textarea
+              className="mb-3 w-full rounded-xl border border-border bg-card p-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              rows={3}
+              placeholder="Cole aqui sua chave AQ.Ab8RN6..."
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowKeyModal(false); pendingFieldRef.current = null; }}
+                className="flex-1 rounded-xl border border-border py-2.5 text-sm font-semibold text-muted-foreground"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={salvarChave}
+                disabled={!keyInput.trim()}
+                className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-40"
+              >
+                Salvar e corrigir
               </button>
             </div>
           </div>
