@@ -43,10 +43,10 @@ interface Escada {
 }
 
 const ESCADAS_CONFIG: Escada[] = [
-  { id: "e1", plataforma: "Plataforma 1", nome: "Escada 1", direcao: "descer", horario: "08:30" },
-  { id: "e4", plataforma: "Plataforma 2", nome: "Escada 4", direcao: "descer", horario: "10:00" },
-  { id: "e6", plataforma: "Plataforma 4", nome: "Escada 6", direcao: "subir",  horario: "09:00" },
-  { id: "e7", plataforma: "Plataforma 6", nome: "Escada 7", direcao: "descer", horario: "09:00" },
+  { id: "e1", plataforma: "Plataforma 1", nome: "Escada 1", direcao: "descer", horario: "08:16" },
+  { id: "e4", plataforma: "Plataforma 2", nome: "Escada 4", direcao: "descer", horario: "08:17" },
+  { id: "e6", plataforma: "Plataforma 4", nome: "Escada 6", direcao: "subir",  horario: "08:18" },
+  { id: "e7", plataforma: "Plataforma 6", nome: "Escada 7", direcao: "descer", horario: "08:19" },
 ];
 
 function getMsUntil(horario: string): number {
@@ -111,7 +111,7 @@ export function EscadasNotif() {
 
       // Schedule in-app popups: 30, 20, 10 min before + on time
       const msg = `${e.plataforma} — ${e.nome} (${e.direcao}) às ${e.horario}`;
-      [30, 20, 10].forEach((min) => {
+      [5, 3, 1].forEach((min) => {
         const delay = msUntil - min * 60 * 1000;
         if (delay > 0) {
           setTimeout(() => {
