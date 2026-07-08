@@ -5,30 +5,54 @@ function playAlarm(urgente = false) {
   try {
     const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
 
-    const tocar = (freq: number, inicio: number, duracao: number, volume = 0.4) => {
+    // Compressor para maximizar o volume sem distorção
+    const compressor = ctx.createDynamicsCompressor();
+    compressor.threshold.setValueAtTime(-6, ctx.currentTime);
+    compressor.knee.setValueAtTime(0, ctx.currentTime);
+    compressor.ratio.setValueAtTime(20, ctx.currentTime);
+    compressor.attack.setValueAtTime(0, ctx.currentTime);
+    compressor.release.setValueAtTime(0.1, ctx.currentTime);
+    compressor.connect(ctx.destination);
+
+    const tocar = (freq: number, inicio: number, duracao: number, vol = 1.0) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "square";
+      gain.connect(compressor);
+      osc.type = urgente ? "sawtooth" : "square";
       osc.frequency.setValueAtTime(freq, ctx.currentTime + inicio);
-      gain.gain.setValueAtTime(volume, ctx.currentTime + inicio);
+      // Volume máximo
+      gain.gain.setValueAtTime(vol, ctx.currentTime + inicio);
+      gain.gain.setValueAtTime(vol, ctx.currentTime + inicio + duracao * 0.8);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + inicio + duracao);
       osc.start(ctx.currentTime + inicio);
       osc.stop(ctx.currentTime + inicio + duracao + 0.05);
     };
 
     if (urgente) {
-      // Sirene urgente — 6 bipes rápidos e altos
-      for (let i = 0; i < 6; i++) {
-        tocar(1200, i * 0.18, 0.12, 0.6);
-        tocar(800,  i * 0.18 + 0.09, 0.09, 0.5);
+      // Sirene de emergência — sobe e desce como ambulância, bem alto
+      for (let i = 0; i < 8; i++) {
+        const t = i * 0.22;
+        // Frequência sobe de 700 a 1400 (varredura)
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(compressor);
+        osc.type = "sawtooth";
+        osc.frequency.setValueAtTime(700, ctx.currentTime + t);
+        osc.frequency.linearRampToValueAtTime(1400, ctx.currentTime + t + 0.11);
+        osc.frequency.linearRampToValueAtTime(700, ctx.currentTime + t + 0.22);
+        gain.gain.setValueAtTime(1.0, ctx.currentTime + t);
+        gain.gain.setValueAtTime(1.0, ctx.currentTime + t + 0.18);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.22);
+        osc.start(ctx.currentTime + t);
+        osc.stop(ctx.currentTime + t + 0.23);
       }
     } else {
-      // Alerta normal — 3 bipes
-      tocar(880, 0.0,  0.15, 0.4);
-      tocar(880, 0.25, 0.15, 0.4);
-      tocar(880, 0.50, 0.15, 0.4);
+      // Alerta — 3 bipes fortes e longos
+      tocar(1000, 0.00, 0.35, 1.0);
+      tocar(1000, 0.45, 0.35, 1.0);
+      tocar(1000, 0.90, 0.35, 1.0);
     }
   } catch {}
 }
