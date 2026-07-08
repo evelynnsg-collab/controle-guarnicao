@@ -74,8 +74,10 @@ function pick(pools: string[][]): string {
 
 /**
  * Distribute working (T) collaborators across the posts + stagger café/almoço.
- * Regra de folga: quem voltou de folga há 2 dias ("2d") vai para a Linha de
- * bloqueio; quem voltou há 1 dia ("1d") vai para a SSO.
+ * Regra de folga (baseada em dias ATÉ a próxima folga):
+ * - "2d" = folga daqui a 2 dias → vai para SSO (posto mais tranquilo)
+ * - "1d" = folga amanhã → vai para Linha de bloqueio (posto mais pesado, último dia)
+ * - sem retorno = folga distante → postos normais
  */
 function buildDistributed(colabs: Colaborador[]): EscalaRow[] {
   const working = colabs.filter((c) => c.status === "T");
@@ -96,9 +98,9 @@ function buildDistributed(colabs: Colaborador[]): EscalaRow[] {
 
   return postos.map((posto, i) => {
     let agente: string;
-    if (posto === "Linha de bloqueio") agente = pick([p2, p0, p1]);
-    else if (posto === "SSO") agente = pick([p1, p0, p2]);
-    else agente = pick([p0, p2, p1]);
+    if (posto === "Linha de bloqueio") agente = pick([p1, p0, p2]);
+    else if (posto === "SSO") agente = pick([p2, p0, p1]);
+    else agente = pick([p0, p1, p2]);
     return {
       id: crypto.randomUUID(),
       posto,
@@ -147,8 +149,8 @@ function isExcluded(name: string): boolean {
  * - If today is T and tomorrow is F → retorno "2d" (2 days before folga)
  * 
  * Simpler approach: read multiple day columns and detect:
- * - col[n]=T, col[n+1]=F → this person is 1 day before folga → retorno "1d" (goes to SSO)
- * - col[n]=T, col[n+1]=T, col[n+2]=F → 2 days before folga → retorno "2d" (goes to Bloqueio)
+ * - col[n]=T, col[n+1]=F → amanhã folga → retorno "1d" → vai para Linha de bloqueio
+ * - col[n]=T, col[n+1]=T, col[n+2]=F → folga em 2 dias → retorno "2d" → vai para SSO
  */
 function parseRows(rows: unknown[][]): Colaborador[] {
   const out: Colaborador[] = [];
