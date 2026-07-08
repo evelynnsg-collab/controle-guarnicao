@@ -186,12 +186,53 @@ export function EscalaEditor() {
   }
 
   /** Redistribute the working (T) collaborators automatically across posts. */
+  // State for extras modal
+  const [extrasModal, setExtrasModal] = useState<{
+    extras: string[];
+    onConfirm: (assignments: Record<string, string>) => void;
+  } | null>(null);
+  const [extraAssignments, setExtraAssignments] = useState<Record<string, string>>({});
+
   function autoDistribute() {
     const working = colaboradores.filter((c) => c.status === "T");
     if (working.length === 0) {
       toast.error("Nenhum agente marcado como T (trabalha)");
       return;
     }
+
+    const totalPostos = POSTOS_DEFAULT.length;
+
+    if (working.length > totalPostos) {
+      // There are more people than posts - ask where to send extras
+      const extras = working.slice(totalPostos).map((c) => c.name);
+      const initialAssignments: Record<string, string> = {};
+      extras.forEach((name) => { initialAssignments[name] = ""; });
+      setExtraAssignments(initialAssignments);
+      setExtrasModal({
+        extras,
+        onConfirm: (assignments) => {
+          // Build distributed with extras assigned to chosen posts
+          const rows = buildDistributed(colaboradores);
+          extras.forEach((name) => {
+            const posto = assignments[name];
+            if (posto) {
+              rows.push({
+                id: crypto.randomUUID(),
+                posto,
+                agente: name,
+                cafe: "09:00",
+                almoco: "12:00",
+              });
+            }
+          });
+          setRows(rows);
+          setExtrasModal(null);
+          toast.success(`Escala distribuída para ${working.length} agente(s)`);
+        },
+      });
+      return;
+    }
+
     setRows(buildDistributed(colaboradores));
     toast.success(`Escala distribuída para ${working.length} agente(s)`);
   }
@@ -362,6 +403,55 @@ export function EscalaEditor() {
           de café/almoço automaticamente.
         </p>
       </div>
+
+      {/* Extras Modal */}
+      {extrasModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-border bg-background p-5 shadow-xl">
+            <h3 className="mb-1 text-base font-bold text-foreground">Agentes extras</h3>
+            <p className="mb-4 text-xs text-muted-foreground">
+              Há mais agentes do que postos disponíveis. Escolha para qual posto enviar cada um:
+            </p>
+            <div className="space-y-3">
+              {extrasModal.extras.map((name) => (
+                <div key={name}>
+                  <p className="mb-1 text-xs font-semibold text-foreground">{name}</p>
+                  <select
+                    className="w-full rounded-lg border border-border bg-card px-3 py-2 text-sm text-foreground"
+                    value={extraAssignments[name] || ""}
+                    onChange={(e) =>
+                      setExtraAssignments((prev) => ({ ...prev, [name]: e.target.value }))
+                    }
+                  >
+                    <option value="">Selecione um posto...</option>
+                    {POSTOS_DEFAULT.map((p) => (
+                      <option key={p} value={p}>{p}</option>
+                    ))}
+                    <option value="Apoio geral">Apoio geral</option>
+                  </select>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setExtrasModal(null)}
+                className="flex-1 rounded-lg border border-border py-2 text-sm font-semibold text-muted-foreground"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => extrasModal.onConfirm(extraAssignments)}
+                disabled={extrasModal.extras.some((n) => !extraAssignments[n])}
+                className="flex-1 rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40"
+              >
+                Confirmar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Captured area */}
       <div ref={tableRef} className="rounded-2xl border border-border bg-background p-4">
