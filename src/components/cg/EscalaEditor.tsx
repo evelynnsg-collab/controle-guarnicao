@@ -85,16 +85,32 @@ function buildDistributed(colabs: Colaborador[]): EscalaRow[] {
   const p1 = working.filter((c) => c.retorno === "1d").map((c) => c.name);
   const p0 = working.filter((c) => !c.retorno).map((c) => c.name);
 
-  // Postos fixos: exatamente os definidos em POSTOS_DEFAULT
-  // Ronda área livre: apenas 2 vagas (já incluídas no POSTOS_DEFAULT)
-  // Se tiver mais gente que postos, os últimos ficam como apoio geral
   const totalPostos = POSTOS_DEFAULT.length; // 12 postos fixos
-  const postos = working.length <= totalPostos
-    ? POSTOS_DEFAULT.slice(0, Math.max(working.length, 1))
-    : [
-        ...POSTOS_DEFAULT,
-        ...Array.from({ length: Math.min(working.length - totalPostos, 3) }, () => "Apoio geral"),
+
+  // Garante que TODOS os colaboradores T recebem um posto
+  // Se tiver menos que 12 → usa só os postos necessários
+  // Se tiver exatamente 12 → usa todos os postos
+  // Se tiver mais que 12 → distribui nos 12 postos e o restante
+  //   recebe postos repetidos (rotacionando) para ninguém ficar sem posto
+  let postos: string[];
+  if (working.length <= totalPostos) {
+    postos = POSTOS_DEFAULT.slice(0, Math.max(working.length, 1));
+  } else {
+    // Todos os 12 postos + extras recebem postos rotacionando
+    postos = [...POSTOS_DEFAULT];
+    const extras = working.length - totalPostos;
+    for (let i = 0; i < extras; i++) {
+      // Rotaciona pelos postos principais (exceto Ronda)
+      const rotatePosts = [
+        "Linha de bloqueio",
+        "Mezanino",
+        "Plataforma 3",
+        "Plataforma 6/7",
+        "SSO",
       ];
+      postos.push(rotatePosts[i % rotatePosts.length]);
+    }
+  }
 
   return postos.map((posto, i) => {
     let agente: string;
@@ -278,37 +294,7 @@ export function EscalaEditor() {
 
     const totalPostos = POSTOS_DEFAULT.length;
 
-    if (working.length > totalPostos) {
-      // There are more people than posts - ask where to send extras
-      const extras = working.slice(totalPostos).map((c) => c.name);
-      const initialAssignments: Record<string, string> = {};
-      extras.forEach((name) => { initialAssignments[name] = ""; });
-      setExtraAssignments(initialAssignments);
-      setExtrasModal({
-        extras,
-        onConfirm: (assignments) => {
-          // Build distributed with extras assigned to chosen posts
-          const rows = buildDistributed(activeColaboradores);
-          extras.forEach((name) => {
-            const posto = assignments[name];
-            if (posto) {
-              rows.push({
-                id: crypto.randomUUID(),
-                posto,
-                agente: name,
-                cafe: "09:00",
-                almoco: "12:00",
-              });
-            }
-          });
-          setRows(rows);
-          setExtrasModal(null);
-          toast.success(`Escala distribuída para ${working.length} agente(s)`);
-        },
-      });
-      return;
-    }
-
+    // Distribui TODOS — buildDistributed garante que ninguém fica sem posto
     setRows(buildDistributed(activeColaboradores));
     toast.success(`Escala distribuída para ${working.length} agente(s)`);
   }
