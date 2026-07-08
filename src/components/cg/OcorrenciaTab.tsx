@@ -117,41 +117,6 @@ function HistoryPhotos({ ids }: { ids: string[] }) {
       ))}
     </div>
 
-      {/* Modal para inserir chave Gemini */}
-      {showKeyModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 pb-8">
-          <div className="w-full max-w-sm rounded-2xl border border-border bg-background p-5 shadow-2xl">
-            <h3 className="mb-1 text-base font-bold text-foreground">🔑 Chave do Gemini</h3>
-            <p className="mb-3 text-xs text-muted-foreground">
-              Para corrigir textos com IA, cole sua chave gratuita do Gemini.{" "}
-              <span className="text-primary">Acesse aistudio.google.com/apikey</span>
-            </p>
-            <textarea
-              className="mb-3 w-full rounded-xl border border-border bg-card p-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              rows={3}
-              placeholder="Cole aqui sua chave AQ.Ab8RN6..."
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              autoFocus
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setShowKeyModal(false); pendingFieldRef.current = null; }}
-                className="flex-1 rounded-xl border border-border py-2.5 text-sm font-semibold text-muted-foreground"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={salvarChave}
-                disabled={!keyInput.trim()}
-                className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-40"
-              >
-                Salvar e corrigir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
@@ -229,111 +194,89 @@ export function OcorrenciaTab() {
     condicoesInformadas: null,
     encaminhamento: null,
   });
-  const lastAi = useRef<Record<AiField, string>>({
-    condicoesInformadas: "",
-    encaminhamento: "",
+
+  const [aiBusy, setAiBusy] = useState<Record<AiField, boolean>>({
+    condicoesInformadas: false,
+    encaminhamento: false,
+  });
+  const timers = useRef<Record<AiField, ReturnType<typeof setTimeout> | null>>({
+    condicoesInformadas: null,
+    encaminhamento: null,
   });
 
-  // Chave Gemini salva no dispositivo
-  const [geminiKey, setGeminiKey] = useState<string>(
-    () => localStorage.getItem("gn_gemini_key") || ""
-  );
-  const [showKeyModal, setShowKeyModal] = useState(false);
-  const [keyInput, setKeyInput] = useState("");
-  const pendingFieldRef = useRef<{ k: AiField; v: string } | null>(null);
+  // Corretor local — funciona sempre, sem API, sem internet
+  const corrigirTexto = (texto: string): string => {
+    let t = texto.trim();
+    if (!t) return t;
 
-  const salvarChave = () => {
-    const k = keyInput.trim();
-    if (!k) return;
-    localStorage.setItem("gn_gemini_key", k);
-    setGeminiKey(k);
-    setShowKeyModal(false);
-    // Retoma a correção com a nova chave
-    if (pendingFieldRef.current) {
-      const { k: campo, v } = pendingFieldRef.current;
-      pendingFieldRef.current = null;
-      executarGemini(campo, v, k);
-    }
-  };
+    // Capitaliza primeira letra
+    t = t.charAt(0).toUpperCase() + t.slice(1);
 
-  const SYSTEM_PROMPT =
-    "Você é um redator de relatórios operacionais de segurança ferroviária (CPTM/Metrô São Paulo). " +
-    "Reescreva o texto abaixo de forma clara, correta e profissional. " +
-    "Use português formal, corrija erros de ortografia e gramática, melhore a estrutura das frases. " +
-    "Mantenha TODOS os fatos e informações originais. NÃO invente nada. " +
-    "Retorne APENAS o texto reescrito, sem aspas, sem explicações, sem introdução.";
+    // Capitaliza após ponto
+    t = t.replace(/([.!?]\s+)([a-záéíóúâêôãõüç])/gi,
+      (_: string, p: string, l: string) => p + l.toUpperCase());
 
-  const executarGemini = async (k: AiField, texto: string, chave: string) => {
-    const prompt = `${SYSTEM_PROMPT}\n\nTexto para reescrever:\n${texto}`;
-    const body = JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.2, maxOutputTokens: 1024 },
-    });
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...(chave.startsWith("AQ.") || chave.startsWith("ya29.")
-        ? { "Authorization": `Bearer ${chave}` }
-        : { "x-goog-api-key": chave }),
-    };
-    setAiBusy((b) => ({ ...b, [k]: true }));
-    try {
-      for (const modelo of ["gemini-2.0-flash", "gemini-1.5-flash"]) {
-        const r = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent`,
-          { method: "POST", headers, body }
-        );
-        if (r.ok) {
-          const j = await r.json();
-          const t = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-          if (t && t.length > 5) {
-            set(k, t);
-            toast.success("✓ Texto corrigido pelo Gemini");
-            return;
-          }
-        } else if (r.status === 401 || r.status === 403) {
-          localStorage.removeItem("gn_gemini_key");
-          setGeminiKey("");
-          pendingFieldRef.current = { k, v: texto };
-          setKeyInput("");
-          setShowKeyModal(true);
-          return;
-        }
-      }
-      toast.error("Gemini não respondeu. Tente novamente.");
-    } catch {
-      toast.error("Erro ao conectar com Gemini.");
-    } finally {
-      setAiBusy((b) => ({ ...b, [k]: false }));
-    }
-  };
+    const subs: [RegExp, string][] = [
+      [/\bpra\b/gi, "para"], [/\bpro\b/gi, "para o"], [/\bpros\b/gi, "para os"],
+      [/\bta\b/gi, "está"], [/\btava\b/gi, "estava"], [/\btavam\b/gi, "estavam"],
+      [/\bto\b/gi, "estou"], [/\bq\b/gi, "que"], [/\bvc\b/gi, "você"],
+      [/\bvcs\b/gi, "vocês"], [/\bpq\b/gi, "porque"], [/\btbm\b/gi, "também"],
+      [/\bmsm\b/gi, "mesmo"], [/\beh\b/gi, "é"], [//gi, "também"],
+      [/\bok\b/gi, "confirmado"], [/\bok\.\b/gi, "confirmado."],
+      [/\bchamou\b/gi, "acionou"], [/\bchamamos\b/gi, "acionamos"],
+      [/\bchamei\b/gi, "acionei"], [/\bchamaram\b/gi, "acionaram"],
+      [/\bligou\b/gi, "acionou"], [/\bligamos\b/gi, "acionamos"],
+      [/\bcaiu\b/gi, "sofreu queda"], [/\bcairam\b/gi, "sofreram queda"],
+      [/\bcaí\b/gi, "sofri queda"],
+      [/\bpassou mal\b/gi, "apresentou mal-estar"],
+      [/\bpassava mal\b/gi, "apresentava mal-estar"],
+      [/\bsentiu mal\b/gi, "apresentou mal-estar"],
+      [/\bcliente\b/gi, "passageiro(a)"], [/\bpessoa\b/gi, "passageiro(a)"],
+      [/\bindivíduo\b/gi, "passageiro(a)"], [/\busuário\b/gi, "passageiro(a)"],
+      [/\bdesacordado\b/gi, "inconsciente"], [/\bdesacordada\b/gi, "inconsciente"],
+      [/\bsangrou\b/gi, "apresentou sangramento"],
+      [/\bbrigou\b/gi, "envolveu-se em conflito verbal"],
+      [/\bbrigaram\b/gi, "envolveram-se em conflito verbal"],
+      [/\bdiscutiu\b/gi, "desentendeu-se verbalmente"],
+      [/\bfomos\b/gi, "nos dirigimos"], [/\bfui\b/gi, "dirigi-me"],
+      [/\bchegou\b/gi, "chegou ao local"], [/\bchegamos\b/gi, "chegamos ao local"],
+      [/\bfoi embora\b/gi, "retirou-se do local"],
+      [/\bfoi liberado\b/gi, "foi liberado(a)"],
+      [/\blevou\b/gi, "encaminhou"], [/\blevaram\b/gi, "encaminharam"],
+      [/\blevamos\b/gi, "encaminhamos"], [/\baconteceu\b/gi, "ocorreu"],
+      [/\bviu\b/gi, "observou"], [/\bviram\b/gi, "observaram"],
+      [/\bficou\b/gi, "permaneceu"], [/\bficaram\b/gi, "permaneceram"],
+      [/\bpediu\b/gi, "solicitou"], [/\bpediram\b/gi, "solicitaram"],
+      [/\bfez\b/gi, "realizou"], [/\bfizemos\b/gi, "realizamos"],
+      [/\bdeu\b/gi, "apresentou"], [/\bderam\b/gi, "apresentaram"],
+      [/\btrouxe\b/gi, "conduziu"], [/\btrouxeram\b/gi, "conduziram"],
+      [/\bsamu\b/gi, "SAMU"], [/\bpm\b/gi, "Polícia Militar"],
+      [/\bcob\b/gi, "COB"], [/\bpid\b/gi, "PID"],
+      [/\bna via\b/gi, "na via permanente"],
+      [/\bno chao\b/gi, "no solo"], [/\bno chão\b/gi, "no solo"],
+      [/\bla\b/gi, "no local"],
+    ];
 
-  const chamarGemini = async (k: AiField, texto: string) => {
-    if (!geminiKey) {
-      pendingFieldRef.current = { k, v: texto };
-      setKeyInput("");
-      setShowKeyModal(true);
-      return;
-    }
-    await executarGemini(k, texto, geminiKey);
+    subs.forEach(([from, to]) => { t = t.replace(from, to); });
+    t = t.replace(/\s{2,}/g, " ").trim();
+    if (!/[.!?]$/.test(t)) t += ".";
+    return t;
   };
 
   const setAi = (k: AiField, v: string) => {
     if (timers.current[k]) clearTimeout(timers.current[k]!);
     const value = v.trim();
     if (value.length < 10) return;
-    timers.current[k] = setTimeout(async () => {
-      setAiBusy((b) => ({ ...b, [k]: true }));
-      try {
-        await chamarGemini(k, value);
-      } catch (err) {
-        console.error("Gemini error:", err);
-        toast.error("Erro ao conectar com Gemini.");
-      } finally {
-        setAiBusy((b) => ({ ...b, [k]: false }));
+    timers.current[k] = setTimeout(() => {
+      const corrigido = corrigirTexto(value);
+      if (corrigido !== value) {
+        set(k, corrigido);
+        setAiBusy((b) => ({ ...b, [k]: true }));
+        setTimeout(() => setAiBusy((b) => ({ ...b, [k]: false })), 1500);
+        toast.success("✓ Texto corrigido");
       }
     }, 20000);
   };
-
   useEffect(() => {
     const t = timers.current;
     return () => {
@@ -881,40 +824,6 @@ export function OcorrenciaTab() {
     </div>
 
       {/* Modal para inserir chave Gemini */}
-      {showKeyModal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 pb-8">
-          <div className="w-full max-w-sm rounded-2xl border border-border bg-background p-5 shadow-2xl">
-            <h3 className="mb-1 text-base font-bold text-foreground">🔑 Chave do Gemini</h3>
-            <p className="mb-3 text-xs text-muted-foreground">
-              Para corrigir textos com IA, cole sua chave gratuita do Gemini.{" "}
-              <span className="text-primary">Acesse aistudio.google.com/apikey</span>
-            </p>
-            <textarea
-              className="mb-3 w-full rounded-xl border border-border bg-card p-3 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              rows={3}
-              placeholder="Cole aqui sua chave AQ.Ab8RN6..."
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              autoFocus
-            />
-            <div className="flex gap-3">
-              <button
-                onClick={() => { setShowKeyModal(false); pendingFieldRef.current = null; }}
-                className="flex-1 rounded-xl border border-border py-2.5 text-sm font-semibold text-muted-foreground"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={salvarChave}
-                disabled={!keyInput.trim()}
-                className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-40"
-              >
-                Salvar e corrigir
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
