@@ -122,7 +122,18 @@ function normStatus(s: string): "T" | "F" | null {
 }
 
 /** Names to always exclude from the scale (case-insensitive partial match) */
-const EXCLUDED_NAMES = ["lieberte", "liéberte"];
+const EXCLUDED_NAMES = [
+  // Supervisores / fora da escala operacional
+  "lieberte", "liéberte",
+  "amanda", "lobeiro",
+  "breno", "rio branco",
+  "antônio tomaz", "antonio tomaz",
+  "david rogério", "david rogerio", "coradi",
+  "jaune", "jaune gonçalves", "jaune goncalves",
+  "adriana grande",
+  "nataly", "winteger",
+  "alice foeger", "foeger",
+];
 
 function isExcluded(name: string): boolean {
   const lower = name.toLowerCase();
