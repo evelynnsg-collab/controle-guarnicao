@@ -200,18 +200,22 @@ export function OcorrenciaTab() {
   });
 
   const setAi = (k: AiField, v: string) => {
-    set(k, v);
     if (timers.current[k]) clearTimeout(timers.current[k]!);
     const value = v.trim();
-    if (value.length < 15 || value === lastAi.current[k]) return; // mínimo 15 chars
+    // Só dispara se tiver conteúdo suficiente
+    if (value.length < 10) return;
     timers.current[k] = setTimeout(async () => {
       setAiBusy((b) => ({ ...b, [k]: true }));
       try {
         const { text } = await runFormalize({ data: { text: value, campo: k } });
-        lastAi.current[k] = text;
-        set(k, text);
-      } catch {
-        toast.error("Não foi possível formalizar o texto agora.");
+        if (text && text.trim().length > 5) {
+          lastAi.current[k] = text;
+          set(k, text.trim());
+          toast.success("✓ Texto corrigido pela IA");
+        }
+      } catch (err) {
+        console.error("AI error:", err);
+        toast.error("Erro ao corrigir texto. Verifique a conexão.");
       } finally {
         setAiBusy((b) => ({ ...b, [k]: false }));
       }
@@ -521,7 +525,10 @@ export function OcorrenciaTab() {
                 className={cn(inputCls, "min-h-20 resize-y pr-9")}
                 placeholder="Medidas tomadas, acionamentos..."
                 value={form.encaminhamento}
-                onChange={(e) => setAi("encaminhamento" as AiField, e.target.value)}
+                onChange={(e) => {
+                  set("encaminhamento", e.target.value);
+                  setAi("encaminhamento", e.target.value);
+                }}
               />
               <span className={cn("pointer-events-none absolute right-2 top-2 flex items-center gap-1 text-[10px] font-medium text-primary transition-opacity", aiBusy["encaminhamento"] ? "opacity-100" : "opacity-0")}>
                 <Sparkles className="size-3.5 animate-pulse" /> IA
