@@ -103,6 +103,7 @@ function App() {
         </div>
       </nav>
 
+      <EscadasNotif />
       <Toaster theme="dark" position="top-center" />
     </div>
   );
