@@ -194,6 +194,273 @@ export function OcorrenciaTab() {
     condicoesInformadas: null,
     encaminhamento: null,
   });
+  const [showGeminiModal, setShowGeminiModal] = useState(false);
+  const [geminiInput, setGeminiInput] = useState("");
+  const pendingAi = useRef<{ k: AiField; v: string } | null>(null);
+
+  const GEMINI_PROMPT =
+    "Você é um redator de relatórios operacionais de segurança ferroviária do Metrô/CPTM de São Paulo. " +
+    "Reescreva o texto a seguir de forma clara, formal, bem estruturada e profissional. " +
+    "Corrija todos os erros de português. Use vocabulário adequado para relatório oficial. " +
+    "Mantenha exatamente os mesmos fatos. Não invente nada. " +
+    "Retorne APENAS o texto reescrito, sem introdução, sem aspas, sem explicação.";
+
+  const reescreverComGemini = async (k: AiField, texto: string, chave: string) => {
+    const body = JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: `${GEMINI_PROMPT}\n\nTexto:\n${texto}` }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 1024 },
+    });
+    setAiBusy((b) => ({ ...b, [k]: true }));
+    try {
+      for (const model of ["gemini-2.0-flash", "gemini-1.5-flash"]) {
+        const useBearer = chave.startsWith("AQ.") || chave.startsWith("ya29.");
+        const r = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              ...(useBearer ? { "Authorization": `Bearer ${chave}` } : { "x-goog-api-key": chave }),
+            },
+            body,
+          }
+        );
+        if (r.status === 401 || r.status === 403) {
+          localStorage.removeItem("gn_gemini_key");
+          pendingAi.current = { k, v: texto };
+          setGeminiInput("");
+          setShowGeminiModal(true);
+          setAiBusy((b) => ({ ...b, [k]: false }));
+          return;
+        }
+        if (r.ok) {
+          const j = await r.json();
+          const t = j?.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (t && t.length > 5) {
+            set(k, t);
+            toast.success("✓ Texto reescrito pelo Gemini");
+            setAiBusy((b) => ({ ...b, [k]: false }));
+            return;
+          }
+        }
+      }
+      toast.error("Gemini não respondeu. Tente novamente.");
+    } catch {
+      toast.error("Erro ao conectar com o Gemini.");
+    }
+    setAiBusy((b) => ({ ...b, [k]: false }));
+  };
+
+  const setAi = (k: AiField, v: string) => {
+    if (timers.current[k]) clearTimeout(timers.current[k]!);
+    const value = v.trim();
+    if (value.length < 10) return;
+    timers.current[k] = setTimeout(() => {
+      const chave = localStorage.getItem("gn_gemini_key") || "";
+      if (!chave) {
+        pendingAi.current = { k, v: value };
+        setGeminiInput("");
+        setShowGeminiModal(true);
+        return;
+      }
+      reescreverComGemini(k, value, chave);
+    }, 20000);
+  };ort { useEffect, useMemo, useRef, useState } from "react";
+import { Camera, FileText, Sparkles, Trash2, X } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import { toast } from "sonner";
+import { jsPDF } from "jspdf";
+import { LOCAL_OPTIONS } from "@/lib/cg-constants";
+import { store, useOcorrencias, useProfile } from "@/lib/cg-store";
+import { savePhoto, getPhoto, blobToDataUrl } from "@/lib/cg-photos";
+import type { Ocorrencia } from "@/lib/cg-types";
+import { cn } from "@/lib/utils";
+
+type AiField = "condicoesInformadas" | "encaminhamento";
+
+const HISTORICO_WHATSAPP_NUMBER = "5511914324246"; // +55 11 91432-4246
+
+
+type SubTab = "form" | "preview" | "history";
+
+const emptyForm = (responsavel: string): Omit<Ocorrencia, "id" | "createdAt"> => ({
+  aps: "",
+  linha: "",
+  estacao: "",
+  local: "",
+  data: new Date().toLocaleDateString("pt-BR"),
+  horaInicio: "",
+  horaFim: "",
+  apsNumero: "",
+  complexidade: "",
+  passNome: "",
+  passIdade: "",
+  passDocumento: "",
+  passTelefone: "",
+  condicoesInformadas: "",
+  encaminhamento: "",
+  prontoSocorro: "",
+  aasLista: [{ nome: responsavel, matricula: "" }],
+});
+
+function buildText(o: Omit<Ocorrencia, "id" | "createdAt">) {
+  return [
+    `*APS:* ${o.aps || "-"}`,
+    ``,
+    `*LINHA:* ${o.linha || "-"}`,
+    `*ESTAÇÃO:* ${o.estacao || "-"}`,
+    `*LOCAL:* ${o.local || "-"}`,
+    `*DATA:* ${o.data || "-"}`,
+    `*INÍCIO:* ${o.horaInicio || "-"}`,
+    `*TÉRMINO:* ${o.horaFim || "-"}`,
+    `*APS N°:* ${o.apsNumero || "-"}`,
+    `*COMPLEXIDADE:* ${o.complexidade || "-"}`,
+    ``,
+    `*NOME:* ${o.passNome || "-"}`,
+    `*IDADE:* ${o.passIdade || "-"}`,
+    `*DOCUMENTO:* ${o.passDocumento || "-"}`,
+    `*TELEFONE:* ${o.passTelefone || "-"}`,
+    ``,
+    `*CONDIÇÕES INFORMADAS:* ${o.condicoesInformadas || "-"}`,
+    `*ENCAMINHAMENTO:* ${o.encaminhamento || "-"}`,
+    `*Pronto Socorro:* ${o.prontoSocorro || "-"}`,
+    ``,
+    ...(o.aasLista || []).map((a, i) =>
+      `*AAS ${(o.aasLista || []).length > 1 ? i + 1 + ": " : ""}* ${a.nome || "-"}   *Matrícula:* ${a.matricula || "-"}`
+    ),
+  ].join("\n");
+}
+
+function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-xs font-medium text-muted-foreground">{label}</span>
+      {children}
+    </label>
+  );
+}
+
+const inputCls =
+  "w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm outline-none transition-colors focus:border-ring";
+
+function HistoryPhotos({ ids }: { ids: string[] }) {
+  const [urls, setUrls] = useState<string[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const created: string[] = [];
+    (async () => {
+      const loaded: string[] = [];
+      for (const id of ids) {
+        const blob = await getPhoto(id);
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          created.push(url);
+          loaded.push(url);
+        }
+      }
+      if (!cancelled) setUrls(loaded);
+    })();
+    return () => {
+      cancelled = true;
+      created.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [ids]);
+
+  if (ids.length === 0) return null;
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {urls.map((u, i) => (
+        <a key={i} href={u} target="_blank" rel="noopener noreferrer">
+          <img src={u} alt="" className="size-14 rounded-lg border border-border object-cover" />
+        </a>
+      ))}
+    </div>
+
+    </div>
+  );
+}
+
+export function OcorrenciaTab() {
+  const profile = useProfile();
+  const history = useOcorrencias();
+  const [sub, setSub] = useState<SubTab>("form");
+  const [form, setForm] = useState(() => emptyForm(profile?.name ?? ""));
+
+  const set = (k: keyof typeof form, v: string) => setForm((f) => ({ ...f, [k]: v }));
+  const previewText = useMemo(() => buildText(form), [form]);
+
+  // Photos attached to the report being filled in (stored in IndexedDB on selection).
+  const [photos, setPhotos] = useState<{ id: string; url: string }[]>([]);
+  const [photosBusy, setPhotosBusy] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  async function onPickPhotos(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files ?? []);
+    e.target.value = "";
+    if (files.length === 0) return;
+    setPhotosBusy(true);
+    try {
+      const added: { id: string; url: string }[] = [];
+      for (const file of files) {
+        const id = await savePhoto(file);
+        added.push({ id, url: URL.createObjectURL(file) });
+      }
+      setPhotos((prev) => [...prev, ...added]);
+      toast.success(`${files.length} foto(s) anexada(s)`);
+    } catch {
+      toast.error("Não foi possível anexar as fotos");
+    } finally {
+      setPhotosBusy(false);
+    }
+  }
+
+  function removePhoto(id: string) {
+    setPhotos((prev) => prev.filter((p) => p.id !== id));
+  }
+
+  // Delete flow: requires the deleter's name + reason before actually removing.
+  const [deleteTarget, setDeleteTarget] = useState<Ocorrencia | null>(null);
+  const [deleteNome, setDeleteNome] = useState("");
+  const [deleteMotivo, setDeleteMotivo] = useState("");
+
+  function openDelete(o: Ocorrencia) {
+    setDeleteTarget(o);
+    setDeleteNome("");
+    setDeleteMotivo("");
+  }
+  function closeDelete() {
+    setDeleteTarget(null);
+  }
+  function confirmDelete() {
+    if (!deleteTarget) return;
+    const nome = deleteNome.trim();
+    const motivo = deleteMotivo.trim();
+    if (!nome || !motivo) {
+      toast.error("Informe seu nome e o motivo para excluir.");
+      return;
+    }
+    store.removeOcorrencia(deleteTarget.id, nome, motivo);
+    toast.success("Ocorrência excluída");
+    setDeleteTarget(null);
+  }
+
+  // AI: rewrite Ocorrência / Encaminhamento / Situação final to be more formal
+  const [aiBusy, setAiBusy] = useState<Record<AiField, boolean>>({
+    condicoesInformadas: false,
+    encaminhamento: false,
+  });
+  const timers = useRef<Record<AiField, ReturnType<typeof setTimeout> | null>>({
+    condicoesInformadas: null,
+    encaminhamento: null,
+  });
 
   const [aiBusy, setAiBusy] = useState<Record<AiField, boolean>>({
     condicoesInformadas: false,
@@ -824,6 +1091,49 @@ export function OcorrenciaTab() {
     </div>
 
       {/* Modal para inserir chave Gemini */}
+    </div>
+
+      {showGeminiModal && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm p-4 pb-10">
+          <div className="w-full max-w-md rounded-2xl border border-border bg-background p-6 shadow-2xl">
+            <div className="mb-2 flex items-center gap-2">
+              <span className="text-2xl">✨</span>
+              <h3 className="text-base font-bold">Configurar Gemini IA</h3>
+            </div>
+            <p className="mb-1 text-xs text-muted-foreground">Acesse <span className="text-primary font-semibold">aistudio.google.com/apikey</span>, crie uma chave e cole abaixo:</p>
+            <textarea
+              className="my-3 w-full rounded-xl border border-border bg-card px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              rows={3}
+              placeholder="Cole sua chave aqui (AQ.Ab8... ou AIzaSy...)"
+              value={geminiInput}
+              onChange={(e) => setGeminiInput(e.target.value)}
+              autoFocus
+            />
+            <div className="flex gap-3">
+              <button onClick={() => { setShowGeminiModal(false); pendingAi.current = null; }}
+                className="flex-1 rounded-xl border border-border py-2.5 text-sm font-semibold text-muted-foreground">
+                Cancelar
+              </button>
+              <button
+                disabled={!geminiInput.trim()}
+                onClick={() => {
+                  const k = geminiInput.trim();
+                  if (!k) return;
+                  localStorage.setItem("gn_gemini_key", k);
+                  setShowGeminiModal(false);
+                  if (pendingAi.current) {
+                    const { k: campo, v } = pendingAi.current;
+                    pendingAi.current = null;
+                    reescreverComGemini(campo, v, k);
+                  }
+                }}
+                className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-bold text-primary-foreground disabled:opacity-40">
+                Salvar e reescrever
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
