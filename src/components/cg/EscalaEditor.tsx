@@ -294,7 +294,45 @@ export function EscalaEditor() {
 
     const totalPostos = POSTOS_DEFAULT.length;
 
-    // Distribui TODOS — buildDistributed garante que ninguém fica sem posto
+    if (working.length > totalPostos) {
+      // Distribui os primeiros 12 nos postos fixos
+      // Os extras precisam de definição manual
+      const nosPostos = working.slice(0, totalPostos);
+      const extras = working.slice(totalPostos);
+
+      // Distribui os 12 primeiros nos postos fixos
+      // Cria um array fake com só os primeiros 12 para buildDistributed
+      const fakeColabs = [
+        ...nosPostos,
+        ...activeColaboradores.filter((c) => c.status === "F"), // mantém os de folga
+      ];
+      const rows = buildDistributed(fakeColabs);
+
+      // Abre modal para os extras
+      const initialAssignments: Record<string, string> = {};
+      extras.forEach((c) => { initialAssignments[c.name] = ""; });
+      setExtraAssignments(initialAssignments);
+      setExtrasModal({
+        extras: extras.map((c) => c.name),
+        onConfirm: (assignments) => {
+          const extraRows = Object.entries(assignments)
+            .filter(([, posto]) => posto)
+            .map(([agente, posto], i) => ({
+              id: crypto.randomUUID(),
+              posto,
+              agente,
+              cafe: CAFE_SEQ[totalPostos + i] ?? "09:00",
+              almoco: ALMOCO_SEQ[totalPostos + i] ?? "12:00",
+            }));
+          setRows([...rows, ...extraRows]);
+          setExtrasModal(null);
+          toast.success(`Escala distribuída — ${working.length} agente(s) no total`);
+        },
+      });
+      return;
+    }
+
+    // 12 ou menos — distribui todos normalmente
     setRows(buildDistributed(activeColaboradores));
     toast.success(`Escala distribuída para ${working.length} agente(s)`);
   }
@@ -472,9 +510,9 @@ export function EscalaEditor() {
       {extrasModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-sm rounded-2xl border border-border bg-background p-5 shadow-xl">
-            <h3 className="mb-1 text-base font-bold text-foreground">Agentes extras</h3>
+            <h3 className="mb-1 text-base font-bold text-foreground">⚠️ Agentes sem posto</h3>
             <p className="mb-4 text-xs text-muted-foreground">
-              Há mais agentes do que postos disponíveis. Escolha para qual posto enviar cada um:
+              Os agentes abaixo não couberam nos postos fixos. Defina onde cada um vai ficar:
             </p>
             <div className="space-y-3">
               {extrasModal.extras.map((name) => (
