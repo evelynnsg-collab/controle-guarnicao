@@ -121,38 +121,90 @@ function normStatus(s: string): "T" | "F" | null {
   return null;
 }
 
-/** Parse a sheet (array of rows) into colaboradores by finding a name + a T/F marker. */
+/** Names to always exclude from the scale (case-insensitive partial match) */
+const EXCLUDED_NAMES = ["lieberte", "liéberte"];
+
+function isExcluded(name: string): boolean {
+  const lower = name.toLowerCase();
+  return EXCLUDED_NAMES.some((ex) => lower.includes(ex));
+}
+
+/**
+ * Parse a sheet into colaboradores.
+ * Detects retorno from consecutive T/F pattern:
+ * - If today is T but yesterday was F and day before was T → retorno "1d" (1 day before folga)
+ * - If today is T and tomorrow is F → retorno "2d" (2 days before folga)
+ * 
+ * Simpler approach: read multiple day columns and detect:
+ * - col[n]=T, col[n+1]=F → this person is 1 day before folga → retorno "1d" (goes to SSO)
+ * - col[n]=T, col[n+1]=T, col[n+2]=F → 2 days before folga → retorno "2d" (goes to Bloqueio)
+ */
 function parseRows(rows: unknown[][]): Colaborador[] {
   const out: Colaborador[] = [];
   const seen = new Set<string>();
-  for (const row of rows) {
+
+  // Try to find header row with day columns
+  let headerRow = -1;
+  for (let i = 0; i < Math.min(rows.length, 5); i++) {
+    const row = rows[i];
     if (!Array.isArray(row)) continue;
-    let status: "T" | "F" | null = null;
+    const hasHeader = row.some((c) => {
+      const up = String(c ?? "").trim().toUpperCase();
+      return HEADER_WORDS.has(up);
+    });
+    if (hasHeader) { headerRow = i; break; }
+  }
+
+  // Find which column is "today" — the first column after the name that has T/F values
+  // We'll use the first T/F column as "today", second as "tomorrow", third as "day after"
+  for (let i = headerRow + 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!Array.isArray(row)) continue;
+
     let name = "";
     let bestLen = 0;
+    const statuses: Array<"T" | "F"> = [];
+
     for (const cell of row) {
       if (cell === null || cell === undefined) continue;
       const s = String(cell).trim();
       if (!s) continue;
       const st = normStatus(s);
       if (st) {
-        status = st;
+        statuses.push(st);
         continue;
       }
       const up = s.toUpperCase();
       if (HEADER_WORDS.has(up)) continue;
-      // A name: has at least 2 letters, not a pure number.
       if (/[a-zA-ZÀ-ÿ]{2,}/.test(s) && s.length > bestLen) {
         name = s;
         bestLen = s.length;
       }
     }
-    if (name && status) {
-      const key = name.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push({ id: crypto.randomUUID(), name, status });
+
+    if (!name || statuses.length === 0) continue;
+    if (isExcluded(name)) continue;
+
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    // Today's status is first T/F found
+    const status = statuses[0];
+
+    // Detect retorno based on upcoming days pattern
+    let retorno: "1d" | "2d" | undefined;
+    if (status === "T") {
+      if (statuses[1] === "F") {
+        // Tomorrow is folga → 1 day before folga
+        retorno = "1d";
+      } else if (statuses[1] === "T" && statuses[2] === "F") {
+        // Day after tomorrow is folga → 2 days before folga
+        retorno = "2d";
+      }
     }
+
+    out.push({ id: crypto.randomUUID(), name, status, ...(retorno ? { retorno } : {}) });
   }
   return out;
 }
@@ -193,8 +245,11 @@ export function EscalaEditor() {
   } | null>(null);
   const [extraAssignments, setExtraAssignments] = useState<Record<string, string>>({});
 
+  // Filter excluded names from colaboradores before distribution
+  const activeColaboradores = colaboradores.filter((c) => !isExcluded(c.name));
+
   function autoDistribute() {
-    const working = colaboradores.filter((c) => c.status === "T");
+    const working = activeColaboradores.filter((c) => c.status === "T");
     if (working.length === 0) {
       toast.error("Nenhum agente marcado como T (trabalha)");
       return;
@@ -233,7 +288,7 @@ export function EscalaEditor() {
       return;
     }
 
-    setRows(buildDistributed(colaboradores));
+    setRows(buildDistributed(activeColaboradores));
     toast.success(`Escala distribuída para ${working.length} agente(s)`);
   }
 
