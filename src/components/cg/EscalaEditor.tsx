@@ -80,7 +80,8 @@ function pick(pools: string[][]): string {
  * - sem retorno = folga distante → postos normais
  */
 function buildDistributed(colabs: Colaborador[]): EscalaRow[] {
-  const working = colabs.filter((c) => c.status === "T");
+  // Triple-check: never include excluded names even if passed in
+  const working = colabs.filter((c) => c.status === "T" && !isExcluded(c.name));
   const p2 = working.filter((c) => c.retorno === "2d").map((c) => c.name);
   const p1 = working.filter((c) => c.retorno === "1d").map((c) => c.name);
   const p0 = working.filter((c) => !c.retorno).map((c) => c.name);
@@ -141,21 +142,51 @@ function normStatus(s: string): "T" | "F" | null {
 
 /** Names to always exclude from the scale (case-insensitive partial match) */
 const EXCLUDED_NAMES = [
-  // Supervisores / fora da escala operacional
+  // Supervisores / fora da escala operacional — excluídos permanentemente
+  // LIÉBERTE Santos De Lima
   "lieberte", "liéberte",
-  "amanda", "lobeiro",
-  "breno", "rio branco",
-  "antônio tomaz", "antonio tomaz",
-  "david rogério", "david rogerio", "coradi",
-  "jaune", "jaune gonçalves", "jaune goncalves",
+  // AMANDA Costa Lobeiro
+  "lobeiro",
+  // Breno RIO BRANCO De Lima
+  "rio branco",
+  // ANTÔNIO Tomaz Do Nascimento Filho
+  "tomaz do nascimento", "antonio tomaz", "antônio tomaz",
+  // David Rogério CORADI
+  "coradi",
+  // JAUNE Gonçalves Luciano
+  "jaune",
+  // Adriana GRANDE de Queiroz
   "adriana grande",
-  "nataly", "winteger",
-  "alice foeger", "foeger",
+  // NATALY Winteger Teixeira
+  "winteger",
+  // Alice FOEGER da Silva
+  "foeger",
+];
+
+// Verificação dupla: nomes completos exatos (case-insensitive)
+const EXCLUDED_FULL = [
+  "amanda costa lobeiro",
+  "breno rio branco de lima",
+  "antônio tomaz do nascimento filho",
+  "antonio tomaz do nascimento filho",
+  "david rogério coradi",
+  "david rogerio coradi",
+  "jaune gonçalves luciano",
+  "jaune goncalves luciano",
+  "adriana grande de queiroz",
+  "nataly winteger teixeira",
+  "alice foeger da silva",
+  "lieberte santos de lima",
+  "liéberte santos de lima",
 ];
 
 function isExcluded(name: string): boolean {
-  const lower = name.toLowerCase();
-  return EXCLUDED_NAMES.some((ex) => lower.includes(ex));
+  const lower = name.toLowerCase().trim();
+  // Check partial match in EXCLUDED_NAMES
+  if (EXCLUDED_NAMES.some((ex) => lower.includes(ex))) return true;
+  // Check exact/full name match in EXCLUDED_FULL
+  if (EXCLUDED_FULL.some((full) => lower === full || lower.includes(full) || full.includes(lower.split(" ")[0] + " " + lower.split(" ").slice(-1)[0]))) return true;
+  return false;
 }
 
 /**
