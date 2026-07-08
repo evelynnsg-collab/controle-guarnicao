@@ -74,14 +74,23 @@ const ESCADAS_CONFIG: Escada[] = [
   { id: "e7", plataforma: "Plataforma 6", nome: "Escada 7", direcao: "descer", horario: "09:00", avisarDe: "08:30" },
 ];
 
+// Last escada horario = 10:00. After this time, no more alerts today.
+const LAST_ESCADA_HORARIO = "10:30"; // 30min buffer after last escada (10:00)
+
+function isTodayScheduleOver(): boolean {
+  const now = new Date();
+  const [h, m] = LAST_ESCADA_HORARIO.split(":").map(Number);
+  const cutoff = new Date(now);
+  cutoff.setHours(h, m, 0, 0);
+  return now.getTime() > cutoff.getTime();
+}
+
 function getMsUntil(horario: string): number {
   const now = new Date();
   const [h, m] = horario.split(":").map(Number);
   const target = new Date(now);
   target.setHours(h, m, 0, 0);
-  if (target.getTime() <= now.getTime()) {
-    target.setDate(target.getDate() + 1); // next day
-  }
+  // NEVER roll over to next day - if time passed today, return negative
   return target.getTime() - now.getTime();
 }
 
@@ -95,8 +104,9 @@ function getTimeLeft(horario: string): string {
 }
 
 function isWarning(horario: string): boolean {
+  if (isTodayScheduleOver()) return false;
   const ms = getMsUntil(horario);
-  return ms <= 30 * 60 * 1000; // 30 min or less
+  return ms > 0 && ms <= 30 * 60 * 1000; // 30 min or less, and not past
 }
 
 export function EscadasNotif() {
@@ -140,6 +150,9 @@ export function EscadasNotif() {
   }, []);
 
   const scheduleAll = (reg?: ServiceWorkerRegistration) => {
+    // Don't schedule if today's escada window is already over
+    if (isTodayScheduleOver()) return;
+
     // 1. Send to SW for background notifications (works even when app is closed)
     navigator.serviceWorker.ready.then((r) => {
       r.active?.postMessage({
@@ -159,7 +172,8 @@ export function EscadasNotif() {
       const [hh, mm] = e.horario.split(":").map(Number);
       const horarioTarget = new Date();
       horarioTarget.setHours(hh, mm, 0, 0);
-      if (horarioTarget.getTime() <= now) horarioTarget.setDate(horarioTarget.getDate() + 1);
+      // Skip if this escada's time already passed today
+      if (horarioTarget.getTime() <= now) return;
       const horarioMs = horarioTarget.getTime();
 
       const [ah, am] = e.avisarDe.split(":").map(Number);
