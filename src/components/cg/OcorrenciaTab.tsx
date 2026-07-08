@@ -203,7 +203,7 @@ export function OcorrenciaTab() {
     set(k, v);
     if (timers.current[k]) clearTimeout(timers.current[k]!);
     const value = v.trim();
-    if (value.length < 8 || value === lastAi.current[k]) return;
+    if (value.length < 15 || value === lastAi.current[k]) return; // mínimo 15 chars
     timers.current[k] = setTimeout(async () => {
       setAiBusy((b) => ({ ...b, [k]: true }));
       try {
@@ -215,7 +215,7 @@ export function OcorrenciaTab() {
       } finally {
         setAiBusy((b) => ({ ...b, [k]: false }));
       }
-    }, 2000);
+    }, 20000); // 20 segundos após parar de digitar
   };
 
   useEffect(() => {
