@@ -21,7 +21,7 @@ const ALMOCO_OPTIONS = ["10:00", "10:30", "11:00", "11:30", "12:00"];
 /**
  * Default layout (12 postos):
  *  - 3 Linha de bloqueio · 1 SSO · 2 Mezanino · 2 Plataforma 6/7
- *  - 2 Plataforma 3 · 2 Ronda / Apoiar postos
+ *  - 2 Plataforma 3 · 2 Ronda / Apoiar postos (máximo 2 na ronda livre)
  * Café (30min): 5 às 08:00 · 6 às 08:30 · 1 às 09:00
  * Almoço (1h): 2 às 10:00 · 3 às 10:30 · 3 às 11:00 · 3 às 11:30 · 1 às 12:00
  */
@@ -83,11 +83,16 @@ function buildDistributed(colabs: Colaborador[]): EscalaRow[] {
   const p1 = working.filter((c) => c.retorno === "1d").map((c) => c.name);
   const p0 = working.filter((c) => !c.retorno).map((c) => c.name);
 
-  const extras = Math.max(0, working.length - POSTOS_DEFAULT.length);
-  const postos = [
-    ...POSTOS_DEFAULT,
-    ...Array.from({ length: extras }, () => "Apoiar postos / Ronda área livre"),
-  ];
+  // Postos fixos: exatamente os definidos em POSTOS_DEFAULT
+  // Ronda área livre: apenas 2 vagas (já incluídas no POSTOS_DEFAULT)
+  // Se tiver mais gente que postos, os últimos ficam como apoio geral
+  const totalPostos = POSTOS_DEFAULT.length; // 12 postos fixos
+  const postos = working.length <= totalPostos
+    ? POSTOS_DEFAULT.slice(0, Math.max(working.length, 1))
+    : [
+        ...POSTOS_DEFAULT,
+        ...Array.from({ length: Math.min(working.length - totalPostos, 3) }, () => "Apoio geral"),
+      ];
 
   return postos.map((posto, i) => {
     let agente: string;
