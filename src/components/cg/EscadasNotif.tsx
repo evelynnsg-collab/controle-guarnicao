@@ -1,4 +1,37 @@
 import { useEffect, useRef, useState } from "react";
+
+// ─── Alarme sonoro via Web Audio API ────────────────────────────────────────
+function playAlarm(urgente = false) {
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+
+    const tocar = (freq: number, inicio: number, duracao: number, volume = 0.4) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "square";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime + inicio);
+      gain.gain.setValueAtTime(volume, ctx.currentTime + inicio);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + inicio + duracao);
+      osc.start(ctx.currentTime + inicio);
+      osc.stop(ctx.currentTime + inicio + duracao + 0.05);
+    };
+
+    if (urgente) {
+      // Sirene urgente — 6 bipes rápidos e altos
+      for (let i = 0; i < 6; i++) {
+        tocar(1200, i * 0.18, 0.12, 0.6);
+        tocar(800,  i * 0.18 + 0.09, 0.09, 0.5);
+      }
+    } else {
+      // Alerta normal — 3 bipes
+      tocar(880, 0.0,  0.15, 0.4);
+      tocar(880, 0.25, 0.15, 0.4);
+      tocar(880, 0.50, 0.15, 0.4);
+    }
+  } catch {}
+}
 import { Bell, BellOff, ChevronDown, ChevronUp } from "lucide-react";
 
 interface Escada {
@@ -45,7 +78,7 @@ export function EscadasNotif() {
   const [perm, setPerm] = useState<NotificationPermission>("default");
   const [open, setOpen] = useState(false);
   const [now, setNow] = useState(new Date());
-  const [popups, setPopups] = useState<{ id: string; msg: string }[]>([]);
+  const [popups, setPopups] = useState<{ id: string; msg: string; urgente?: boolean }[]>([]);
   const swRef = useRef<ServiceWorker | null>(null);
   const scheduledRef = useRef<Set<string>>(new Set());
 
@@ -82,14 +115,18 @@ export function EscadasNotif() {
         const delay = msUntil - min * 60 * 1000;
         if (delay > 0) {
           setTimeout(() => {
-            setPopups((p) => [...p, { id: `${e.id}-${min}`, msg: `⚠️ Faltam ${min}min — ${msg}` }]);
+            playAlarm(false);
+            setPopups((p) => [...p, { id: `${e.id}-${min}`, msg: `⚠️ Faltam ${min}min — ${msg}`, urgente: false }]);
             setTimeout(() => setPopups((p) => p.filter((x) => x.id !== `${e.id}-${min}`)), 60_000);
           }, delay);
         }
       });
-      // On time popup
+      // On time popup — sirene urgente
       setTimeout(() => {
-        setPopups((p) => [...p, { id: `${e.id}-now`, msg: `🚨 AGORA — Alterar escada!\n${msg}` }]);
+        playAlarm(true);
+        // Toca de novo após 3s para garantir que foi ouvido
+        setTimeout(() => playAlarm(true), 3000);
+        setPopups((p) => [...p, { id: `${e.id}-now`, msg: `🚨 AGORA — Alterar escada!\n${msg}`, urgente: true }]);
         setTimeout(() => setPopups((p) => p.filter((x) => x.id !== `${e.id}-now`)), 120_000);
       }, msUntil);
 
@@ -112,9 +149,43 @@ export function EscadasNotif() {
         {popups.map((p) => (
           <div
             key={p.id}
-            className="pointer-events-auto w-full max-w-sm animate-in slide-in-from-top-4 rounded-xl border border-amber-500/50 bg-amber-950/95 px-4 py-3 shadow-2xl backdrop-blur-sm"
+            className={`pointer-events-auto w-full max-w-sm animate-in slide-in-from-top-4 rounded-xl border shadow-2xl backdrop-blur-sm ${
+              p.urgente
+                ? "border-red-500/70 bg-red-950/95"
+                : "border-amber-500/50 bg-amber-950/95"
+            }`}
           >
-            <p className="whitespace-pre-line text-sm font-bold text-amber-200">{p.msg}</p>
+            <div className="flex items-start gap-3 px-4 py-3">
+              <div className="flex-1">
+                <p className={`whitespace-pre-line text-sm font-bold ${p.urgente ? "text-red-200" : "text-amber-200"}`}>
+                  {p.msg}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setPopups((prev) => prev.filter((x) => x.id !== p.id));
+                }}
+                className={`mt-0.5 flex size-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-black ${
+                  p.urgente ? "bg-red-800 text-red-200" : "bg-amber-800 text-amber-200"
+                }`}
+              >
+                ✕
+              </button>
+            </div>
+            {p.urgente && (
+              <div className="flex items-center gap-2 border-t border-red-800/50 px-4 py-2">
+                <span className="animate-pulse text-lg">🚨</span>
+                <span className="text-xs font-bold text-red-300">Toque para dispensar</span>
+                <button
+                  onClick={() => {
+                    playAlarm(true);
+                  }}
+                  className="ml-auto rounded-lg bg-red-800 px-2 py-1 text-xs font-bold text-red-200"
+                >
+                  🔊 Repetir
+                </button>
+              </div>
+            )}
           </div>
         ))}
       </div>
