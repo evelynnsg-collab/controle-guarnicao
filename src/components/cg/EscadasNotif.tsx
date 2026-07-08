@@ -89,77 +89,97 @@ export function EscadasNotif() {
     return () => clearInterval(t);
   }, []);
 
-  // Register service worker
+  // Register SW + setup permissions + schedule all alerts
   useEffect(() => {
-    if (!("serviceWorker" in navigator)) return;
-    navigator.serviceWorker.register("/sw-escadas.js").then((reg) => {
-      swRef.current = reg.active || reg.installing || reg.waiting;
-      reg.addEventListener("updatefound", () => {
-        swRef.current = reg.installing;
+    const init = async () => {
+      setPerm(Notification.permission);
+
+      if (!("serviceWorker" in navigator)) return;
+
+      // Register SW
+      const reg = await navigator.serviceWorker.register("/sw-escadas.js", { updateViaCache: "none" });
+      await navigator.serviceWorker.ready;
+
+      // Listen for messages from SW
+      navigator.serviceWorker.addEventListener("message", (evt) => {
+        if (evt.data?.type === "SCHEDULED_OK") {
+          console.log("[Escadas] SW scheduled", evt.data.count, "alerts");
+        }
       });
-    });
-    setPerm(Notification.permission);
+
+      // If permission already granted, schedule immediately
+      if (Notification.permission === "granted") {
+        scheduleAll(reg);
+      }
+    };
+    init();
   }, []);
 
-  // Schedule notifications when permission granted
-  useEffect(() => {
-    if (perm !== "granted") return;
-    ESCADAS_CONFIG.forEach((e) => {
-      if (scheduledRef.current.has(e.id)) return;
-      const msUntil = getMsUntil(e.horario);
-      if (msUntil > 24 * 60 * 60 * 1000) return; // skip if more than 24h
-      scheduledRef.current.add(e.id);
-
-      // Schedule in-app popups: 30, 20, 10 min before + on time
-      const msg = `${e.plataforma} — ${e.nome} (${e.direcao}) às ${e.horario}`;
-      // Calcula alertas de 10 em 10 min a partir de avisarDe até horario
-      const [ah, am] = e.avisarDe.split(":").map(Number);
-      const avisarDeMs = new Date();
-      avisarDeMs.setHours(ah, am, 0, 0);
-      if (avisarDeMs.getTime() <= Date.now()) {
-        // já passou a hora de início dos avisos — começa agora de 10 em 10 min
-        avisarDeMs.setTime(Date.now());
-      }
-      // Gera avisos de 10 em 10 min entre avisarDe e horario
-      let avisoTime = avisarDeMs.getTime();
-      const horarioMs = Date.now() + msUntil;
-      let avisoIdx = 0;
-      while (avisoTime < horarioMs) {
-        const avisoDelay = avisoTime - Date.now();
-        const minRestantes = Math.round((horarioMs - avisoTime) / 60000);
-        const avisoId = `${e.id}-aviso-${avisoIdx}`;
-        if (avisoDelay >= 0) {
-          setTimeout(() => {
-            playAlarm(false);
-            const avisoMsg = minRestantes > 0
-              ? `⚠️ Faltam ${minRestantes}min — ${msg}`
-              : `⚠️ Agora! — ${msg}`;
-            setPopups((p) => [...p, { id: avisoId, msg: avisoMsg, urgente: false }]);
-            setTimeout(() => setPopups((p) => p.filter((x) => x.id !== avisoId)), 90_000);
-          }, avisoDelay);
-        }
-        avisoTime += 10 * 60 * 1000; // próximo aviso em 10 min
-        avisoIdx++;
-      }
-      // On time popup — sirene urgente
-      setTimeout(() => {
-        playAlarm(true);
-        // Toca de novo após 3s para garantir que foi ouvido
-        setTimeout(() => playAlarm(true), 3000);
-        setPopups((p) => [...p, { id: `${e.id}-now`, msg: `🚨 AGORA — Alterar escada!\n${msg}`, urgente: true }]);
-        setTimeout(() => setPopups((p) => p.filter((x) => x.id !== `${e.id}-now`)), 120_000);
-      }, msUntil);
-
-      // Send to SW for background notifications
-      navigator.serviceWorker.ready.then((reg) => {
-        reg.active?.postMessage({ type: "SCHEDULE_ESCADA", escada: msg, horario: e.horario, msUntil });
+  const scheduleAll = (reg?: ServiceWorkerRegistration) => {
+    // 1. Send to SW for background notifications (works even when app is closed)
+    navigator.serviceWorker.ready.then((r) => {
+      r.active?.postMessage({
+        type: "SCHEDULE_ESCADAS",
+        escadas: ESCADAS_CONFIG,
       });
     });
+
+    // 2. Schedule in-app popups + sound (works when app is open)
+    ESCADAS_CONFIG.forEach((e) => {
+      if (scheduledRef.current.has(e.id)) return;
+      scheduledRef.current.add(e.id);
+
+      const msg = `${e.plataforma} — ${e.nome} (${e.direcao}) às ${e.horario}`;
+      const now = Date.now();
+
+      const [hh, mm] = e.horario.split(":").map(Number);
+      const horarioTarget = new Date();
+      horarioTarget.setHours(hh, mm, 0, 0);
+      if (horarioTarget.getTime() <= now) horarioTarget.setDate(horarioTarget.getDate() + 1);
+      const horarioMs = horarioTarget.getTime();
+
+      const [ah, am] = e.avisarDe.split(":").map(Number);
+      const avisarDeTarget = new Date();
+      avisarDeTarget.setHours(ah, am, 0, 0);
+      if (avisarDeTarget.getTime() <= now) avisarDeTarget.setTime(now + 500);
+      let avisoTime = avisarDeTarget.getTime();
+      let idx = 0;
+
+      while (avisoTime <= horarioMs) {
+        const delay = avisoTime - now;
+        const isUrgente = avisoTime >= horarioMs - 30_000;
+        const minLeft = Math.round((horarioMs - avisoTime) / 60000);
+        const avisoId = `${e.id}-${idx}`;
+
+        if (delay >= 0) {
+          setTimeout(() => {
+            playAlarm(isUrgente);
+            if (isUrgente) setTimeout(() => playAlarm(true), 3000);
+            const avisoMsg = isUrgente
+              ? `🚨 AGORA — Alterar escada!\n${msg}`
+              : `⚠️ Faltam ${minLeft}min — ${msg}`;
+            setPopups((p) => [...p, { id: avisoId, msg: avisoMsg, urgente: isUrgente }]);
+            setTimeout(() => setPopups((p) => p.filter((x) => x.id !== avisoId)), isUrgente ? 120_000 : 90_000);
+          }, delay);
+        }
+        avisoTime += 10 * 60 * 1000;
+        idx++;
+      }
+    });
+  };
+
+  // When user grants permission, schedule
+  useEffect(() => {
+    if (perm === "granted") scheduleAll();
   }, [perm]);
 
   const requestPerm = async () => {
     const result = await Notification.requestPermission();
     setPerm(result);
+    if (result === "granted") {
+      scheduledRef.current.clear(); // reset so scheduleAll re-registers
+      scheduleAll();
+    }
   };
 
   return (
