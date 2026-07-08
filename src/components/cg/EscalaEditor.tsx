@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { toPng } from "html-to-image";
 import * as XLSX from "xlsx";
@@ -258,8 +258,16 @@ export function EscalaEditor() {
   } | null>(null);
   const [extraAssignments, setExtraAssignments] = useState<Record<string, string>>({});
 
-  // Filter excluded names from colaboradores before distribution
+  // Filter excluded names from colaboradores before ANY use
   const activeColaboradores = colaboradores.filter((c) => !isExcluded(c.name));
+  
+  // Also clean store if it has excluded names (cleanup from old imports)
+  useEffect(() => {
+    const hasExcluded = colaboradores.some((c) => isExcluded(c.name));
+    if (hasExcluded) {
+      store.setColaboradores(colaboradores.filter((c) => !isExcluded(c.name)));
+    }
+  }, [colaboradores]);
 
   function autoDistribute() {
     const working = activeColaboradores.filter((c) => c.status === "T");
