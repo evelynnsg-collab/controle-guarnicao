@@ -39,14 +39,15 @@ interface Escada {
   plataforma: string;
   nome: string;
   direcao: string;
-  horario: string; // "HH:MM"
+  horario: string;   // "HH:MM" - hora de alterar
+  avisarDe: string;  // "HH:MM" - hora de começar os avisos (a cada 10min)
 }
 
 const ESCADAS_CONFIG: Escada[] = [
-  { id: "e1", plataforma: "Plataforma 1", nome: "Escada 1", direcao: "descer", horario: "08:16" },
-  { id: "e4", plataforma: "Plataforma 2", nome: "Escada 4", direcao: "descer", horario: "08:17" },
-  { id: "e6", plataforma: "Plataforma 4", nome: "Escada 6", direcao: "subir",  horario: "08:18" },
-  { id: "e7", plataforma: "Plataforma 6", nome: "Escada 7", direcao: "descer", horario: "08:19" },
+  { id: "e1", plataforma: "Plataforma 1", nome: "Escada 1", direcao: "descer", horario: "08:30", avisarDe: "08:00" },
+  { id: "e4", plataforma: "Plataforma 2", nome: "Escada 4", direcao: "descer", horario: "10:00", avisarDe: "09:30" },
+  { id: "e6", plataforma: "Plataforma 4", nome: "Escada 6", direcao: "subir",  horario: "09:00", avisarDe: "08:30" },
+  { id: "e7", plataforma: "Plataforma 6", nome: "Escada 7", direcao: "descer", horario: "09:00", avisarDe: "08:30" },
 ];
 
 function getMsUntil(horario: string): number {
@@ -111,16 +112,35 @@ export function EscadasNotif() {
 
       // Schedule in-app popups: 30, 20, 10 min before + on time
       const msg = `${e.plataforma} — ${e.nome} (${e.direcao}) às ${e.horario}`;
-      [5, 3, 1].forEach((min) => {
-        const delay = msUntil - min * 60 * 1000;
-        if (delay > 0) {
+      // Calcula alertas de 10 em 10 min a partir de avisarDe até horario
+      const [ah, am] = e.avisarDe.split(":").map(Number);
+      const avisarDeMs = new Date();
+      avisarDeMs.setHours(ah, am, 0, 0);
+      if (avisarDeMs.getTime() <= Date.now()) {
+        // já passou a hora de início dos avisos — começa agora de 10 em 10 min
+        avisarDeMs.setTime(Date.now());
+      }
+      // Gera avisos de 10 em 10 min entre avisarDe e horario
+      let avisoTime = avisarDeMs.getTime();
+      const horarioMs = Date.now() + msUntil;
+      let avisoIdx = 0;
+      while (avisoTime < horarioMs) {
+        const avisoDelay = avisoTime - Date.now();
+        const minRestantes = Math.round((horarioMs - avisoTime) / 60000);
+        const avisoId = `${e.id}-aviso-${avisoIdx}`;
+        if (avisoDelay >= 0) {
           setTimeout(() => {
             playAlarm(false);
-            setPopups((p) => [...p, { id: `${e.id}-${min}`, msg: `⚠️ Faltam ${min}min — ${msg}`, urgente: false }]);
-            setTimeout(() => setPopups((p) => p.filter((x) => x.id !== `${e.id}-${min}`)), 60_000);
-          }, delay);
+            const avisoMsg = minRestantes > 0
+              ? `⚠️ Faltam ${minRestantes}min — ${msg}`
+              : `⚠️ Agora! — ${msg}`;
+            setPopups((p) => [...p, { id: avisoId, msg: avisoMsg, urgente: false }]);
+            setTimeout(() => setPopups((p) => p.filter((x) => x.id !== avisoId)), 90_000);
+          }, avisoDelay);
         }
-      });
+        avisoTime += 10 * 60 * 1000; // próximo aviso em 10 min
+        avisoIdx++;
+      }
       // On time popup — sirene urgente
       setTimeout(() => {
         playAlarm(true);
