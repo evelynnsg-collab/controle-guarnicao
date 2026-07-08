@@ -280,7 +280,7 @@ export function EscalaEditor() {
         extras,
         onConfirm: (assignments) => {
           // Build distributed with extras assigned to chosen posts
-          const rows = buildDistributed(colaboradores);
+          const rows = buildDistributed(activeColaboradores);
           extras.forEach((name) => {
             const posto = assignments[name];
             if (posto) {
@@ -329,10 +329,12 @@ export function EscalaEditor() {
         toast.error("Não encontrei nomes com T/F na planilha");
         return;
       }
-      store.setColaboradores(parsed);
-      const working = parsed.filter((c) => c.status === "T");
-      setRows(buildDistributed(parsed));
-      const folgas = parsed.length - working.length;
+      // Remove excluded names from imported list
+      const filtered = parsed.filter((c) => !isExcluded(c.name));
+      store.setColaboradores(filtered);
+      const working = filtered.filter((c) => c.status === "T");
+      setRows(buildDistributed(filtered));
+      const folgas = filtered.length - working.length;
       toast.success(
         `Importado: ${working.length} trabalham · ${folgas} de folga — escala distribuída`,
       );
