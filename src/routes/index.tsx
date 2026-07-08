@@ -7,6 +7,7 @@ import { GuarnicaoTab } from "@/components/cg/GuarnicaoTab";
 import { OcorrenciaTab } from "@/components/cg/OcorrenciaTab";
 import { AdminTab } from "@/components/cg/AdminTab";
 import { CreditBar } from "@/components/cg/CreditBar";
+import { EscadasNotif } from "@/components/cg/EscadasNotif";
 import { store, useProfile } from "@/lib/cg-store";
 import { cn } from "@/lib/utils";
 
